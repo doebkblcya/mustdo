@@ -2,6 +2,8 @@ const SUCCESS_CLOSE_MS = 1800;
 const MAX_RECORDING_MS = 30_000;
 const MIN_RECORDING_SECONDS = 0.5;
 const TARGET_SAMPLE_RATE = 16_000;
+const STREAM_READY_TIMEOUT_MS = 5000;
+const STREAM_RESULT_TIMEOUT_MS = 90000;
 
 const state = {
   user: null,
@@ -331,21 +333,24 @@ function renderTodoEdit(todo) {
 function renderOverlay() {
   if (!state.overlay) return "";
   const overlay = state.overlay;
-  const busy = ["recording", "transcribing", "parsing"].includes(overlay.status);
+  const busy = ["preparing", "recording", "transcribing", "parsing"].includes(overlay.status);
   const titleMap = {
+    preparing: "准备语音服务",
     recording: "正在录音",
     transcribing: "正在转文字",
     parsing: "正在解析待办",
     success: "已添加",
-    error: "解析失败",
+    empty: "未添加待办",
+    error: overlay.title || "处理失败",
   };
+  const closable = ["empty", "error"].includes(overlay.status);
   return `
     <div class="overlay-backdrop">
       <section class="parse-panel">
         <div class="parse-header">
           <h2 class="parse-title">${titleMap[overlay.status] || "处理中"}</h2>
           ${
-            overlay.status === "error"
+            closable
               ? `<button class="icon-button" type="button" data-action="close-overlay" title="关闭" aria-label="关闭">${icons.close}</button>`
               : ""
           }
@@ -458,14 +463,28 @@ function findTodo(todoId) {
   );
 }
 
+function getVoiceStreamUrl() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/voice/stream`;
+}
+
+function waitWithTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
 async function startRecording() {
   if (state.recording) return;
   if (!navigator.mediaDevices?.getUserMedia) {
-    showOverlay({ status: "error", error: "当前浏览器不支持录音" });
+    showOverlay({ status: "error", title: "语音失败", error: "当前浏览器不支持录音" });
     return;
   }
 
   try {
+    showOverlay({ status: "preparing", message: "正在准备语音服务" });
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -479,68 +498,252 @@ async function startRecording() {
     const processor = context.createScriptProcessor(4096, 1, 1);
     const zeroGain = context.createGain();
     zeroGain.gain.value = 0;
+    const socket = new WebSocket(getVoiceStreamUrl());
+    socket.binaryType = "arraybuffer";
 
-    const chunks = [];
-    processor.onaudioprocess = (event) => {
-      chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
-    };
-    source.connect(processor);
-    processor.connect(zeroGain);
-    zeroGain.connect(context.destination);
-
-    state.recording = {
+    const recording = {
       stream,
       context,
       source,
       processor,
       zeroGain,
-      chunks,
-      startedAt: performance.now(),
+      socket,
+      socketReady: false,
+      socketClosedByClient: false,
+      pendingBytes: new Uint8Array(0),
+      audioBytes: 0,
+      transcript: "",
+      finalTranscript: "",
+      streamError: null,
       sampleRate: context.sampleRate,
       timeoutId: window.setTimeout(() => stopRecording(), MAX_RECORDING_MS),
     };
-    showOverlay({ status: "recording", message: "松开后开始转写" });
+    state.recording = recording;
+    attachVoiceSocketHandlers(recording);
+    render();
+
+    processor.onaudioprocess = (event) => {
+      const input = new Float32Array(event.inputBuffer.getChannelData(0));
+      const downsampled = downsampleBuffer(input, recording.sampleRate, TARGET_SAMPLE_RATE);
+      const pcm = floatTo16BitPcm(downsampled);
+      appendPendingPcm(recording, pcm);
+    };
+    source.connect(processor);
+    processor.connect(zeroGain);
+    zeroGain.connect(context.destination);
   } catch {
-    showOverlay({ status: "error", error: "无法使用麦克风" });
+    if (state.recording) {
+      const recording = state.recording;
+      state.recording = null;
+      stopRecordingCapture(recording);
+      closeRecordingSocket(recording);
+    }
+    showOverlay({ status: "error", title: "语音失败", error: "无法使用麦克风" });
   }
 }
 
 async function stopRecording() {
   const recording = state.recording;
   if (!recording) return;
-  window.clearTimeout(recording.timeoutId);
   state.recording = null;
+  stopRecordingCapture(recording);
+  render();
 
+  try {
+    const duration = recording.audioBytes / (TARGET_SAMPLE_RATE * 2);
+    if (duration < MIN_RECORDING_SECONDS) {
+      closeRecordingSocket(recording);
+      showOverlay({ status: "error", title: "语音失败", error: "录音太短" });
+      return;
+    }
+    const transcript = await finishVoiceStream(recording);
+    await createTodosFromTranscript(transcript);
+  } catch (error) {
+    closeRecordingSocket(recording);
+    showOverlay({
+      status: "error",
+      title: "语音失败",
+      transcript: recording.transcript,
+      error: error.message || "录音处理失败",
+    });
+  }
+}
+
+function attachVoiceSocketHandlers(recording) {
+  recording.readyPromise = new Promise((resolve, reject) => {
+    recording.resolveReady = resolve;
+    recording.rejectReady = reject;
+  });
+  recording.finalPromise = new Promise((resolve, reject) => {
+    recording.resolveFinal = resolve;
+    recording.rejectFinal = reject;
+  });
+  recording.readyPromise.catch(() => null);
+  recording.finalPromise.catch(() => null);
+
+  recording.socket.addEventListener("message", (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      failVoiceStream(recording, new Error("语音服务返回格式异常"));
+      return;
+    }
+
+    if (message.type === "ready") {
+      recording.socketReady = true;
+      recording.resolveReady?.();
+      flushPendingPcm(recording);
+      if (state.recording === recording) {
+        showOverlay({
+          status: "recording",
+          transcript: recording.transcript,
+          message: "正在录音",
+        });
+      }
+      return;
+    }
+
+    if (message.type === "partial") {
+      recording.transcript = message.transcript || recording.transcript;
+      if (state.recording === recording) {
+        showOverlay({
+          status: "recording",
+          transcript: recording.transcript,
+          message: "正在转文字",
+        });
+      } else if (state.overlay?.status === "transcribing") {
+        showOverlay({
+          ...state.overlay,
+          transcript: recording.transcript,
+        });
+      }
+      return;
+    }
+
+    if (message.type === "status") {
+      const canUpdateOverlay =
+        state.overlay &&
+        (state.recording === recording || state.overlay.status === "transcribing");
+      if (canUpdateOverlay) {
+        showOverlay({
+          ...state.overlay,
+          transcript: recording.transcript,
+          message: message.message || "正在转文字",
+        });
+      }
+      return;
+    }
+
+    if (message.type === "final") {
+      recording.finalTranscript = message.transcript || "";
+      recording.resolveFinal?.(recording.finalTranscript);
+      return;
+    }
+
+    if (message.type === "error") {
+      failVoiceStream(recording, new Error(message.error || "语音识别失败，未添加待办"));
+    }
+  });
+
+  recording.socket.addEventListener("error", () => {
+    failVoiceStream(recording, new Error("语音连接失败"));
+  });
+
+  recording.socket.addEventListener("close", () => {
+    if (!recording.finalTranscript && !recording.socketClosedByClient && !recording.streamError) {
+      failVoiceStream(recording, new Error("语音连接已断开"));
+    }
+  });
+}
+
+function appendPendingPcm(recording, pcmBuffer) {
+  const bytes = new Uint8Array(pcmBuffer);
+  recording.audioBytes += bytes.byteLength;
+  if (!recording.pendingBytes.byteLength) {
+    recording.pendingBytes = bytes;
+  } else {
+    const merged = new Uint8Array(recording.pendingBytes.byteLength + bytes.byteLength);
+    merged.set(recording.pendingBytes, 0);
+    merged.set(bytes, recording.pendingBytes.byteLength);
+    recording.pendingBytes = merged;
+  }
+  flushPendingPcm(recording);
+}
+
+function flushPendingPcm(recording) {
+  if (!recording.socketReady || recording.socket.readyState !== WebSocket.OPEN) return false;
+  if (!recording.pendingBytes.byteLength) return false;
+
+  const chunk = recording.pendingBytes;
+  recording.pendingBytes = new Uint8Array(0);
+  recording.socket.send(chunk);
+  return true;
+}
+
+async function drainPendingPcm(recording) {
+  flushPendingPcm(recording);
+}
+
+async function finishVoiceStream(recording) {
+  await waitWithTimeout(recording.readyPromise, STREAM_READY_TIMEOUT_MS, "语音服务连接超时");
+  await drainPendingPcm(recording);
+  if (recording.socket.readyState !== WebSocket.OPEN) {
+    throw new Error("语音连接已断开");
+  }
+  showOverlay({
+    status: "transcribing",
+    transcript: recording.transcript,
+    message: "正在等待最终文本",
+  });
+  recording.socket.send(JSON.stringify({ type: "end" }));
+  const transcript = await waitWithTimeout(
+    recording.finalPromise,
+    STREAM_RESULT_TIMEOUT_MS,
+    "语音识别超时",
+  );
+  if (!transcript) {
+    throw new Error("语音未识别出有效文本");
+  }
+  return transcript;
+}
+
+function failVoiceStream(recording, error) {
+  recording.streamError = error;
+  recording.rejectReady?.(error);
+  recording.rejectFinal?.(error);
+  if (state.recording === recording) {
+    state.recording = null;
+    stopRecordingCapture(recording);
+    closeRecordingSocket(recording);
+    showOverlay({
+      status: "error",
+      title: "语音失败",
+      transcript: recording.transcript,
+      error: error.message || "语音识别失败，未添加待办",
+    });
+  }
+}
+
+function stopRecordingCapture(recording) {
+  if (recording.captureStopped) return;
+  recording.captureStopped = true;
+  window.clearTimeout(recording.timeoutId);
   recording.processor.disconnect();
   recording.source.disconnect();
   recording.zeroGain.disconnect();
   recording.stream.getTracks().forEach((track) => track.stop());
-  await recording.context.close().catch(() => null);
-
-  try {
-    const merged = mergeAudioChunks(recording.chunks);
-    const downsampled = downsampleBuffer(merged, recording.sampleRate, TARGET_SAMPLE_RATE);
-    const pcm = floatTo16BitPcm(downsampled);
-    const duration = pcm.byteLength / (TARGET_SAMPLE_RATE * 2);
-    if (duration < MIN_RECORDING_SECONDS) {
-      showOverlay({ status: "error", error: "录音太短" });
-      return;
-    }
-    await transcribeAndCreateTodos(pcm);
-  } catch {
-    showOverlay({ status: "error", error: "录音处理失败" });
-  }
+  recording.context.close().catch(() => null);
 }
 
-function mergeAudioChunks(chunks) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
+function closeRecordingSocket(recording) {
+  if (
+    recording.socket.readyState === WebSocket.OPEN ||
+    recording.socket.readyState === WebSocket.CONNECTING
+  ) {
+    recording.socketClosedByClient = true;
+    recording.socket.close();
   }
-  return merged;
 }
 
 function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
@@ -578,25 +781,25 @@ function floatTo16BitPcm(samples) {
   return buffer;
 }
 
-async function transcribeAndCreateTodos(pcmBuffer) {
-  showOverlay({ status: "transcribing", message: "正在转文字" });
-  const formData = new FormData();
-  formData.append("file", new Blob([pcmBuffer], { type: "audio/pcm" }), "recording.pcm");
-
+async function createTodosFromTranscript(transcript) {
   try {
-    const transcription = await api("/api/voice/transcriptions", {
-      method: "POST",
-      body: formData,
-    });
     showOverlay({
       status: "parsing",
-      transcript: transcription.transcript,
+      transcript,
       message: "正在解析待办",
     });
     const result = await api("/api/todos/ai", {
       method: "POST",
-      body: JSON.stringify({ transcript: transcription.transcript }),
+      body: JSON.stringify({ transcript }),
     });
+    if (!result.items?.length) {
+      showOverlay({
+        status: "empty",
+        transcript: result.transcript || transcript,
+        message: result.message || "没有识别到需要新增的待办",
+      });
+      return;
+    }
     await loadTodos();
     showOverlay({
       status: "success",
@@ -612,7 +815,11 @@ async function transcribeAndCreateTodos(pcmBuffer) {
       }
     }, SUCCESS_CLOSE_MS);
   } catch (error) {
-    showOverlay({ status: "error", error: error.message || "AI 有问题，未添加待办" });
+    showOverlay({
+      status: "error",
+      title: "解析失败",
+      error: error.message || "解析服务暂时不可用，未添加待办",
+    });
   }
 }
 

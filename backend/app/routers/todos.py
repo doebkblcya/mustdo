@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.deps import current_user, get_db
 from app.schemas import TodoListResponse, TodoPublic, TodoUpdateRequest
@@ -51,11 +51,10 @@ def patch_todo(
 @router.delete("/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_todo(
     todo_id: int,
-    response: Response,
     db: sqlite3.Connection = Depends(get_db),
     user: sqlite3.Row = Depends(current_user),
-):
+) -> None:
     deleted = soft_delete_todo(db, int(user["id"]), todo_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="待办不存在")
-    return response
+    return None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 import httpx
@@ -12,6 +13,12 @@ from app.time_utils import today_date
 
 
 class DeepSeekParseError(RuntimeError):
+    def __init__(self, message: str, *, detail: str | None = None) -> None:
+        super().__init__(message)
+        self.detail = detail
+
+
+class NoTodoParsedError(DeepSeekParseError):
     pass
 
 
@@ -40,6 +47,9 @@ class ParsedTodoItem(BaseModel):
 
 class ParsedTodoPayload(BaseModel):
     items: list[ParsedTodoItem]
+
+
+JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 
 def _system_prompt(today: date) -> str:
@@ -92,6 +102,7 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
             {"role": "user", "content": transcript},
         ],
         "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
         "temperature": 0.1,
         "max_tokens": 1200,
     }
@@ -108,18 +119,22 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
                 json=payload,
             )
         response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = f"status={exc.response.status_code} body={exc.response.text[:300]}"
+        raise DeepSeekParseError("DeepSeek 请求失败", detail=detail) from exc
     except httpx.HTTPError as exc:
-        raise DeepSeekParseError("DeepSeek 请求失败") from exc
+        raise DeepSeekParseError("解析服务连接失败", detail=repr(exc)) from exc
 
     try:
         content = response.json()["choices"][0]["message"]["content"]
-        parsed_json = json.loads(content)
+        parsed_json = _loads_deepseek_json(content)
         parsed = ParsedTodoPayload.model_validate(parsed_json)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
-        raise DeepSeekParseError("DeepSeek 返回格式不合法") from exc
+        detail = _format_parse_detail(exc, content if "content" in locals() else None)
+        raise DeepSeekParseError("DeepSeek 返回格式不合法", detail=detail) from exc
 
     if not parsed.items:
-        raise DeepSeekParseError("DeepSeek 未解析出待办")
+        raise NoTodoParsedError("没有识别到需要新增的待办")
 
     normalized: list[dict[str, str | None]] = []
     for item in parsed.items[:20]:
@@ -135,3 +150,19 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
         )
 
     return normalized
+
+
+def _loads_deepseek_json(content: object) -> object:
+    if not isinstance(content, str) or not content.strip():
+        raise json.JSONDecodeError("empty content", "", 0)
+
+    cleaned = content.strip()
+    fenced = JSON_BLOCK_RE.fullmatch(cleaned)
+    if fenced:
+        cleaned = fenced.group(1).strip()
+    return json.loads(cleaned)
+
+
+def _format_parse_detail(exc: Exception, content: object) -> str:
+    preview = content[:300] if isinstance(content, str) else repr(content)
+    return f"{type(exc).__name__}: {exc}; content={preview!r}"

@@ -42,6 +42,8 @@ class Settings:
     iflytek_iat_path: str
     iflytek_language: str
     iflytek_accent: str
+    iflytek_connect_timeout_seconds: float
+    iflytek_final_timeout_seconds: float
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
@@ -74,6 +76,8 @@ def get_settings() -> Settings:
         iflytek_iat_path=os.getenv("IFLYTEK_IAT_PATH", "/v2/iat"),
         iflytek_language=os.getenv("IFLYTEK_LANGUAGE", "zh_cn"),
         iflytek_accent=os.getenv("IFLYTEK_ACCENT", "mandarin"),
+        iflytek_connect_timeout_seconds=float(os.getenv("IFLYTEK_CONNECT_TIMEOUT_SECONDS", "10")),
+        iflytek_final_timeout_seconds=float(os.getenv("IFLYTEK_FINAL_TIMEOUT_SECONDS", "10")),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),

@@ -97,3 +97,4 @@ class AiCreateRequest(BaseModel):
 class AiCreateResponse(BaseModel):
     transcript: str
     items: list[TodoPublic]
+    message: str | None = None

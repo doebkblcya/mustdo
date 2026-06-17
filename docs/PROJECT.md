@@ -58,6 +58,7 @@ backend/
     services/
       audio.py             上传音频读取和 PCM 校验/转码入口
       iflytek.py           讯飞语音听写 WebSocket 客户端
+      voice_stream.py      流式识别编排和前端事件
       deepseek.py          DeepSeek JSON 解析和校验
       todos.py             待办分组、创建、更新、清理
   scripts/
@@ -111,22 +112,44 @@ backend/
 ### 语音和 AI 数据流
 
 ```text
-1. 前端按住说话，松手后得到 16kHz/16bit/mono PCM。
-2. POST /api/voice/transcriptions 上传 PCM。
-3. 后端调用讯飞语音听写，返回 transcript。
-4. 前端展示 transcript，并进入 AI 解析状态。
-5. POST /api/todos/ai 发送 transcript。
-6. 后端调用 DeepSeek，要求 JSON Output。
-7. 后端校验 content、due_date、due_time。
-8. 校验成功后写入 SQLite。
-9. 前端刷新待办并展示已添加结果。
+1. 前端按住说话，申请麦克风并建立 WS /api/voice/stream。
+2. 后端完成 Cookie session 认证。
+3. 后端连接讯飞语音听写 WebSocket。
+4. 连接阶段前端展示“准备语音服务”加载态，不展示转写状态。
+5. 讯飞连接成功后，后端向前端发送 ready。
+6. 前端收到 ready 后才切换到录音/转写组件，并开始发送本地缓冲的 PCM。
+7. 前端实时采集并下采样为 16kHz/16bit/mono PCM。
+8. 前端把 PCM chunk 发送给后端，不参与讯飞协议分帧。
+9. 后端按讯飞文档统一拆成 1280B/40ms 音频帧并代理语音听写。
+10. 前端松手后发送 end，等待 transcript。
+11. 后端优先使用讯飞 final transcript。
+12. 如果 final 超时但有 partial transcript，则使用 partial transcript。
+13. POST /api/todos/ai 发送 transcript。
+14. 后端调用 DeepSeek，要求 JSON Output。
+15. 后端校验 content、due_date、due_time。
+16. 校验成功后写入 SQLite。
+17. 前端刷新待办并展示已添加结果。
 ```
 
 失败策略：
 
-- 语音识别失败：不写入数据库。
+- 讯飞连接未就绪：前端只展示准备态，不展示录音/转写状态。
+- 实时语音识别 final 超时但已有 partial：使用 partial。
+- 语音识别没有可用文本：不写入数据库。
+- transcript 中没有可新增待办：返回 `200` 和 `items=[]`，前端展示“未添加待办”。
 - DeepSeek 请求失败或返回格式非法：不写入数据库。
 - 数据库保存失败：不写入数据库，前端展示错误。
+
+模块边界：
+
+- `routers/voice.py` 只负责 WebSocket/HTTP 边界、用户认证、输入校验和响应。
+- `services/voice_stream.py` 负责编排讯飞连接、音频流、识别事件和最终结果。
+- `services/iflytek.py` 只处理讯飞协议：鉴权 URL、音频帧、结束帧和返回解析。
+- `services/deepseek.py` 只处理 transcript 到结构化待办的 JSON 解析和校验。
+
+网络策略：
+
+- 讯飞 `wss://iat-api.xfyun.cn/v2/iat` 建议走直连，避免代理影响 WebSocket/TLS 握手。
 
 ### API 摘要
 
@@ -137,7 +160,8 @@ backend/
 - `GET /api/todos`：获取今天/明天/后续分组
 - `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态
 - `DELETE /api/todos/{id}`：软删除待办
-- `POST /api/voice/transcriptions`：上传音频并返回转写文本
+- `WS /api/voice/stream`：流式上传 PCM 并返回实时/最终转写文本
+- `POST /api/voice/transcriptions`：上传音频并返回转写文本，保留作兼容入口
 - `POST /api/todos/ai`：将转写文本解析并新增待办
 
 ## 前端
@@ -162,8 +186,8 @@ frontend/
 - 待办页面：每次只展示一个时间范围。
 - 无具体时间分组：没有 `due_time` 的事项放在时间线最上方。
 - 时间线分组：有 `due_time` 的事项按时间展示。
-- 底部语音按钮：按住录音，松手上传。
-- 解析组件：展示录音、转写、解析、已添加或错误状态。
+- 底部语音按钮：按住录音并流式转写，松手后解析。
+- 解析组件：连接阶段展示准备态；语音服务 ready 后展示录音/转写状态，随后展示解析、未添加、已添加或错误状态。
 
 ### 前端状态
 
@@ -175,7 +199,7 @@ frontend/
 - `activeView`：当前时间页，值为 `today`、`tomorrow` 或 `upcoming`。
 - `editingId` / `editValues`：当前编辑中的待办。
 - `overlay`：语音解析组件状态。
-- `recording`：录音上下文和音频 buffer。
+- `recording`：录音上下文、WebSocket、PCM 发送队列和转写状态。
 
 ### 录音实现
 
@@ -185,7 +209,8 @@ Web Demo 使用浏览器 Web Audio API：
 - `AudioContext` + `ScriptProcessor` 收集音频帧。
 - 前端下采样为 `16kHz`。
 - 转为 `16bit little-endian PCM`。
-- 上传为 `recording.pcm`。
+- 后端发送 `ready` 前，PCM 暂存在前端内存队列。
+- 收到 `ready` 后，通过 `/api/voice/stream` WebSocket 流式发送 PCM chunk。
 
 这个设计减少了后端对 `ffmpeg` 的依赖。后端仍保留非 PCM 上传时尝试转码的扩展口。
 
@@ -214,24 +239,27 @@ Web Demo 使用浏览器 Web Audio API：
 - 今天/明天/后续动态分组。
 - 过期待办隐藏和清理脚本。
 - 前端按住说话。
-- 前端 PCM 下采样和上传。
+- 前端 PCM 下采样和 WebSocket 流式上传。
 - 讯飞语音听写 WebAPI 封装。
+- 语音流式编排服务，`ready` 只代表讯飞服务已连接。
 - DeepSeek JSON 解析封装。
 - 解析过程组件和错误展示。
 - Web Demo liquid glass UI。
 - 邀请码创建和查看脚本。
+- 语音链路基础单元测试。
 
 已验证：
 
-- Python 语法编译：`python -m compileall backend/app backend/scripts`
+- Python 语法编译：`python -m compileall backend/app backend/scripts backend/tests`
 - 前端 JS 语法检查：`node --check frontend/app.js`
+- 语音基础测试：`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v`
 - 数据库初始化脚本。
 - 邀请码生成和列表脚本。
 - 待办保存逻辑。
 
 ## 已知限制
 
-- 目前没有自动化测试套件。
+- 自动化测试仍较少，目前主要覆盖语音基础逻辑。
 - 没有忘记密码和管理员后台。
 - 没有用户资料、账号绑定或多设备管理。
 - Web Demo 不支持手动新增文本待办。
@@ -261,7 +289,7 @@ Web Demo 使用浏览器 Web Audio API：
 
 - 根据真实使用数据评估是否加入提醒。
 - 评估是否从 SQLite 迁移到 PostgreSQL。
-- 评估多 ASR/LLM 供应商 fallback。
+- 评估多 ASR/LLM 供应商切换能力。
 - 引入更完整的观测：请求日志、错误追踪、第三方 API 延迟统计。
 - 设计多端同步和离线缓存策略。
 
@@ -295,6 +323,7 @@ uv run python scripts/cleanup_overdue.py
 基础验证：
 
 ```bash
-python -m compileall backend/app backend/scripts
+python -m compileall backend/app backend/scripts backend/tests
 node --check frontend/app.js
+PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v
 ```
