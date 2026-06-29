@@ -97,6 +97,23 @@ uv run python scripts/create_invite.py
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+服务器后台运行可用管理脚本：
+
+```bash
+cd backend
+scripts/server.sh start
+scripts/server.sh status
+scripts/server.sh logs
+scripts/server.sh restart
+scripts/server.sh stop
+```
+
+脚本默认绑定 `127.0.0.1:8000`，适合放在 Nginx/Caddy 后面反向代理。日志写入 `backend/logs/uvicorn.log`，pid 写入 `backend/run/uvicorn.pid`。如需直接暴露端口：
+
+```bash
+HOST=0.0.0.0 PORT=8000 scripts/server.sh start
+```
+
 前端开发服务：
 
 ```bash

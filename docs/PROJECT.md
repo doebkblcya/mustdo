@@ -335,6 +335,19 @@ uv run python scripts/create_invite.py
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+服务器后台运行：
+
+```bash
+cd backend
+scripts/server.sh start
+scripts/server.sh status
+scripts/server.sh logs
+scripts/server.sh restart
+scripts/server.sh stop
+```
+
+`scripts/server.sh` 默认绑定 `127.0.0.1:8000`，适合由 Nginx/Caddy 反向代理到公网 HTTPS；运行日志在 `backend/logs/uvicorn.log`，pid 文件在 `backend/run/uvicorn.pid`。
+
 前端开发服务：
 
 ```bash
