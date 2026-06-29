@@ -24,14 +24,27 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _csv_env(name: str, default: str) -> tuple[str, ...]:
+    raw = os.getenv(name, default)
+    return tuple(item.strip().rstrip("/") for item in raw.split(",") if item.strip())
+
+
+def _cookie_samesite_env(name: str, default: str) -> str:
+    value = os.getenv(name, default).strip().lower()
+    if value not in {"lax", "strict", "none"}:
+        return default
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     secret_key: str
     database_path: Path
-    frontend_origin: str
+    frontend_origins: tuple[str, ...]
     session_cookie_name: str
     session_days: int
     session_cookie_secure: bool
+    session_cookie_samesite: str
     timezone: str
     max_audio_seconds: float
     min_audio_seconds: float
@@ -62,10 +75,14 @@ def get_settings() -> Settings:
     return Settings(
         secret_key=os.getenv("SECRET_KEY", "dev-secret-change-me"),
         database_path=database_path,
-        frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:8000"),
+        frontend_origins=_csv_env(
+            "FRONTEND_ORIGINS",
+            os.getenv("FRONTEND_ORIGIN", "http://localhost:8000,http://localhost:5173,http://127.0.0.1:5173"),
+        ),
         session_cookie_name=os.getenv("SESSION_COOKIE_NAME", "todo_session"),
         session_days=int(os.getenv("SESSION_DAYS", "30")),
         session_cookie_secure=_bool_env("SESSION_COOKIE_SECURE", False),
+        session_cookie_samesite=_cookie_samesite_env("SESSION_COOKIE_SAMESITE", "lax"),
         timezone=os.getenv("TIMEZONE", "Asia/Shanghai"),
         max_audio_seconds=float(os.getenv("MAX_AUDIO_SECONDS", "30")),
         min_audio_seconds=float(os.getenv("MIN_AUDIO_SECONDS", "0.5")),

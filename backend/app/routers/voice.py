@@ -8,11 +8,12 @@ import sqlite3
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, WebSocket, status
+from fastapi import APIRouter, Depends, File, Response, UploadFile, WebSocket, status
 
 from app.config import get_settings
 from app.db import get_connection
 from app.deps import current_user, get_db
+from app.errors import raise_api_error
 from app.schemas import AiCreateRequest, AiCreateResponse, TranscriptionResponse
 from app.security import hash_session_token
 from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm
@@ -73,10 +74,11 @@ async def create_transcription(
         transcript = await IflytekIatClient().transcribe_pcm(pcm)
     except IflytekError as exc:
         logger.warning("voice_http_transcription_failed elapsed_ms=%s", _elapsed_ms(started_at))
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="语音识别失败，未添加待办",
-        ) from exc
+        raise_api_error(
+            status.HTTP_502_BAD_GATEWAY,
+            "speech_recognition_failed",
+            "语音识别失败，未添加待办",
+        )
     logger.info(
         "voice_http_transcription_done elapsed_ms=%s audio_seconds=%.3f transcript_chars=%s",
         _elapsed_ms(started_at),
@@ -263,10 +265,11 @@ async def create_todos_from_transcript(
             exc,
             exc.detail,
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="解析服务暂时不可用，未添加待办",
-        ) from exc
+        raise_api_error(
+            status.HTTP_502_BAD_GATEWAY,
+            "todo_parse_unavailable",
+            "解析服务暂时不可用，未添加待办",
+        )
     except sqlite3.Error as exc:
         logger.exception(
             "todos_ai_save_failed elapsed_ms=%s parse_ms=%s transcript_chars=%s",
@@ -274,10 +277,11 @@ async def create_todos_from_transcript(
             round((parsed_at - started_at) * 1000) if parsed_at is not None else None,
             len(payload.transcript),
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"保存待办失败：{exc}",
-        ) from exc
+        raise_api_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "todo_save_failed",
+            f"保存待办失败：{exc}",
+        )
 
     logger.info(
         "todos_ai_done total_ms=%s parse_ms=%s save_ms=%s transcript_chars=%s items=%s",

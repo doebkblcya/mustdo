@@ -16,7 +16,7 @@ Todo Analyzer 是一个轻量语音待办工具。第一版只让语音承担“
 ## 当前架构
 
 ```text
-Web Demo
+Vite React Frontend
   - 登录/注册
   - 按住说话并采集 PCM
   - 待办时间页和手动编辑
@@ -47,7 +47,7 @@ backend/
     config.py              配置加载，读取 .env
     db.py                  SQLite 连接和 schema 初始化
     deps.py                FastAPI 依赖，包括当前用户解析
-    main.py                应用入口、路由注册、静态前端托管
+    main.py                应用入口、路由注册、dist 前端托管
     schemas.py             Pydantic 请求/响应模型
     security.py            密码、邀请码、session token 哈希
     time_utils.py          Asia/Shanghai 时间工具
@@ -164,17 +164,45 @@ backend/
 - `POST /api/voice/transcriptions`：上传音频并返回转写文本，保留作兼容入口
 - `POST /api/todos/ai`：将转写文本解析并新增待办
 
+### 错误模型
+
+普通 HTTP API 的错误响应统一为：
+
+```json
+{
+  "code": "todo_not_found",
+  "message": "待办不存在",
+  "details": null
+}
+```
+
+约定：
+
+- `code` 是稳定机器码，用于前端状态机、多端客户端和测试断言。
+- `message` 是可直接展示给用户的中文文案。
+- `details` 用于参数校验等结构化信息；没有时为 `null`。
+- FastAPI 参数校验错误统一返回 `code=validation_error`。
+- WebSocket 语音流沿用事件消息，错误事件仍为 `{type: "error", error: "..."}`。
+
 ## 前端
 
-前端位于 `frontend/`，当前是无构建静态 Web Demo，由 FastAPI 直接托管。
+前端位于 `frontend/`，当前是 Vite + React + TypeScript 的独立 SPA。开发时由 Vite 提供前端服务并代理 `/api` 和 `/api/voice/stream` 到 FastAPI；代理目标由 `frontend/.env.local` 的 `API_PROXY_TARGET` 配置。生产构建后，FastAPI 可在存在 `frontend/dist` 时托管构建产物。
 
 ### 目录结构
 
 ```text
 frontend/
-  index.html       页面入口
-  app.js           API 调用、状态管理、录音、渲染
-  styles.css       Liquid glass 风格和响应式布局
+  package.json       前端脚本和依赖
+  vite.config.ts     Vite 配置和 API/WebSocket 代理
+  index.html         Vite 入口
+  src/
+    App.tsx          应用状态编排
+    api/             API client 和后端类型
+    auth/            登录注册组件
+    todos/           待办页面组件
+    voice/           录音、WebSocket 和语音组件
+    utils/           日期等通用工具
+    styles.css       Liquid glass 风格和响应式布局
 ```
 
 ### 页面结构
@@ -191,15 +219,15 @@ frontend/
 
 ### 前端状态
 
-`app.js` 中维护的主要状态：
+`App.tsx` 中维护页面级状态，语音细节由 `voice/useVoiceRecorder.ts` 管理：
 
 - `user`：当前登录用户。
 - `authMode`：登录或注册。
 - `todos`：后端返回的分组待办。
 - `activeView`：当前时间页，值为 `today`、`tomorrow` 或 `upcoming`。
 - `editingId` / `editValues`：当前编辑中的待办。
-- `overlay`：语音解析组件状态。
-- `recording`：录音上下文、WebSocket、PCM 发送队列和转写状态。
+- `overlay`：语音解析组件状态，由语音 hook 暴露。
+- `recording`：录音状态，由语音 hook 暴露。
 
 ### 录音实现
 
@@ -240,6 +268,7 @@ Web Demo 使用浏览器 Web Audio API：
 - 过期待办隐藏和清理脚本。
 - 前端按住说话。
 - 前端 PCM 下采样和 WebSocket 流式上传。
+- 前端从单文件原生 JS 迁移为 Vite + React + TypeScript。
 - 讯飞语音听写 WebAPI 封装。
 - 语音流式编排服务，`ready` 只代表讯飞服务已连接。
 - DeepSeek JSON 解析封装。
@@ -251,8 +280,7 @@ Web Demo 使用浏览器 Web Audio API：
 已验证：
 
 - Python 语法编译：`python -m compileall backend/app backend/scripts backend/tests`
-- 前端 JS 语法检查：`node --check frontend/app.js`
-- 语音基础测试：`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v`
+- 后端单元测试：`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v`
 - 数据库初始化脚本。
 - 邀请码生成和列表脚本。
 - 待办保存逻辑。
@@ -265,6 +293,7 @@ Web Demo 使用浏览器 Web Audio API：
 - Web Demo 不支持手动新增文本待办。
 - 语音只支持新增，不支持语音修改或删除。
 - ASR 和 LLM 依赖外部服务可用性。
+- 本地未安装前端 npm 依赖时无法运行 TypeScript 检查，需要先执行 `cd frontend && npm install`。
 - 本地 SQLite 适合 MVP 和小范围测试，后续多用户规模扩大时需要评估迁移。
 
 ## 后续展望
@@ -306,6 +335,38 @@ uv run python scripts/create_invite.py
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+前端开发服务：
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+开发访问 `http://localhost:5173`。前端地址配置：
+
+```bash
+# 浏览器运行时 API 地址；留空则请求当前站点 /api
+VITE_API_BASE_URL=
+
+# Vite 开发代理目标；后端部署到服务器后可改成服务器地址
+API_PROXY_TARGET=http://127.0.0.1:8000
+```
+
+如果前端直连后端服务器，需要在后端 `.env` 配置允许的前端来源：
+
+```bash
+FRONTEND_ORIGINS=http://localhost:5173,https://your-frontend.example.com
+```
+
+如果前端和后端是不同站点并直接跨域访问，生产环境通常还需要：
+
+```bash
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=none
+```
+
 查看邀请码：
 
 ```bash
@@ -324,6 +385,6 @@ uv run python scripts/cleanup_overdue.py
 
 ```bash
 python -m compileall backend/app backend/scripts backend/tests
-node --check frontend/app.js
+(cd frontend && npm run typecheck)
 PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v
 ```

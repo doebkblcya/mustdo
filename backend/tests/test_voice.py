@@ -285,7 +285,8 @@ class AudioUploadTests(unittest.TestCase):
             asyncio.run(read_upload_as_pcm(upload))
 
         self.assertEqual(raised.exception.status_code, 400)
-        self.assertEqual(raised.exception.detail, "录音太短")
+        self.assertEqual(raised.exception.detail["code"], "recording_too_short")
+        self.assertEqual(raised.exception.detail["message"], "录音太短")
 
     def test_too_long_pcm_is_rejected(self) -> None:
         raw = b"\0" * (PCM_BYTES_PER_SECOND * 31)
@@ -295,7 +296,8 @@ class AudioUploadTests(unittest.TestCase):
             asyncio.run(read_upload_as_pcm(upload))
 
         self.assertEqual(raised.exception.status_code, 400)
-        self.assertEqual(raised.exception.detail, "录音超过 30 秒")
+        self.assertEqual(raised.exception.detail["code"], "recording_too_long")
+        self.assertEqual(raised.exception.detail["message"], "录音超过 30 秒")
 
 
 class VoiceStreamServiceTests(unittest.TestCase):

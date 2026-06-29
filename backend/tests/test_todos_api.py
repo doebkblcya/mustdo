@@ -94,7 +94,8 @@ class TodoApiTests(unittest.TestCase):
             db.close()
 
         self.assertEqual(raised.exception.status_code, 404)
-        self.assertEqual(raised.exception.detail, "待办不存在")
+        self.assertEqual(raised.exception.detail["code"], "todo_not_found")
+        self.assertEqual(raised.exception.detail["message"], "待办不存在")
 
 
 if __name__ == "__main__":

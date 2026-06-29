@@ -38,10 +38,11 @@ Web Demo 不是临时页面，而是用于验证后端 API、语音链路、AI p
 
 前端：
 
-- 无构建静态 Web Demo
-- 原生 HTML/CSS/JavaScript
+- Vite
+- React
+- TypeScript
 - Web Audio API 录音和 PCM 下采样
-- FastAPI 静态文件托管
+- 独立开发服务，生产构建产物可由 FastAPI 托管
 
 ## 项目结构
 
@@ -49,7 +50,7 @@ Web Demo 不是临时页面，而是用于验证后端 API、语音链路、AI p
 .
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                 FastAPI 入口和静态前端托管
+│   │   ├── main.py                 FastAPI 入口和 dist 前端托管
 │   │   ├── db.py                   SQLite schema 和连接
 │   │   ├── config.py               环境配置
 │   │   ├── security.py             密码、邀请码、session hash
@@ -69,14 +70,23 @@ Web Demo 不是临时页面，而是用于验证后端 API、语音链路、AI p
 │       ├── list_invites.py         查看邀请码记录
 │       └── cleanup_overdue.py      清理过期待办
 ├── frontend/
-│   ├── index.html                  Web Demo 入口
-│   ├── app.js                      前端状态、录音、API、渲染
-│   └── styles.css                  Liquid glass UI
+│   ├── package.json                Vite/React 前端脚本和依赖
+│   ├── vite.config.ts              Vite 配置和 API/WebSocket 代理
+│   ├── index.html                  Vite 入口
+│   └── src/
+│       ├── App.tsx                 应用状态编排
+│       ├── api/                    API client 和类型
+│       ├── auth/                   登录注册组件
+│       ├── todos/                  待办页面组件
+│       ├── voice/                  录音、WebSocket 和语音组件
+│       └── styles.css              Liquid glass UI
 └── docs/
     └── PROJECT.md                  架构、进度和展望
 ```
 
 ## 本地运行
+
+后端：
 
 ```bash
 cd backend
@@ -87,16 +97,63 @@ uv run python scripts/create_invite.py
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+前端开发服务：
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
 打开：
 
 ```text
-http://localhost:8000
+http://localhost:5173
 ```
+
+前端后端地址不写死在业务代码里，配置在 `frontend/.env.local`：
+
+```bash
+# 留空表示浏览器请求当前站点的 /api，适合 Vite 代理或 FastAPI 托管 dist
+VITE_API_BASE_URL=
+
+# Vite 本地开发代理目标
+API_PROXY_TARGET=http://127.0.0.1:8000
+```
+
+如果后端先部署到服务器，推荐本地前端先保持 `VITE_API_BASE_URL` 为空，只改代理目标：
+
+```bash
+API_PROXY_TARGET=https://your-api.example.com
+```
+
+这样浏览器仍访问 `http://localhost:5173/api`，由 Vite 代理到服务器，Cookie 行为最简单。如果希望前端直连服务器 API，则设置：
+
+```bash
+VITE_API_BASE_URL=https://your-api.example.com
+```
+
+此时后端 `.env` 需要把前端来源加入 CORS：
+
+```bash
+FRONTEND_ORIGINS=http://localhost:5173,https://your-frontend.example.com
+```
+
+如果前端和后端是不同站点并直接跨域访问，生产环境通常还需要 HTTPS Cookie 配置：
+
+```bash
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=none
+```
+
+生产环境可运行 `npm run build`，后端会在存在 `frontend/dist` 时托管构建产物。
 
 `.env` 至少需要配置：
 
 ```bash
 SECRET_KEY=change-me
+FRONTEND_ORIGINS=http://localhost:5173,https://your-frontend.example.com
 IFLYTEK_APP_ID=
 IFLYTEK_API_KEY=
 IFLYTEK_API_SECRET=
@@ -170,12 +227,24 @@ uv run python scripts/cleanup_overdue.py
 - `POST /api/voice/transcriptions`：上传音频并返回转写文本
 - `POST /api/todos/ai`：将转写文本解析并新增待办
 
+错误响应统一为：
+
+```json
+{
+  "code": "todo_not_found",
+  "message": "待办不存在",
+  "details": null
+}
+```
+
+前端只展示 `message`，并保留 `code` 给后续状态机或多端客户端做精确分支。
+
 ## 基础验证
 
 ```bash
 python -m compileall backend/app backend/scripts
-node --check frontend/app.js
 PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v
+(cd frontend && npm install && npm run typecheck)
 ```
 
 ## 参考

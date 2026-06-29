@@ -3,10 +3,11 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, status
 
 from app.config import get_settings
 from app.db import get_connection
+from app.errors import raise_api_error
 from app.security import hash_session_token
 from app.time_utils import utcish_now_iso
 
@@ -24,7 +25,7 @@ def current_user(
     session_token: str | None = Cookie(default=None, alias=get_settings().session_cookie_name),
 ) -> sqlite3.Row:
     if not session_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise_api_error(status.HTTP_401_UNAUTHORIZED, "unauthorized", "请先登录")
 
     token_hash = hash_session_token(session_token)
     now = utcish_now_iso()
@@ -41,5 +42,5 @@ def current_user(
         (token_hash, now),
     ).fetchone()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise_api_error(status.HTTP_401_UNAUTHORIZED, "unauthorized", "请先登录")
     return row

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
 from app.config import get_settings
 from app.deps import current_user, get_db
+from app.errors import raise_api_error
 from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UserPublic
 from app.security import (
     generate_session_token,
@@ -32,7 +33,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         max_age=settings.session_days * 24 * 60 * 60,
         httponly=True,
         secure=settings.session_cookie_secure,
-        samesite="lax",
+        samesite=settings.session_cookie_samesite,
         path="/",
     )
 
@@ -63,7 +64,7 @@ def register(payload: RegisterRequest, response: Response, db: sqlite3.Connectio
         username = validate_username(payload.username)
         validate_password(payload.password)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise_api_error(status.HTTP_400_BAD_REQUEST, "invalid_account_input", str(exc))
 
     username_normalized = normalize_username(username)
     invite_hash = hash_invite_code(payload.invite_code)
@@ -77,7 +78,7 @@ def register(payload: RegisterRequest, response: Response, db: sqlite3.Connectio
         ).fetchone()
         if invite is None:
             db.execute("ROLLBACK")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="邀请码无效")
+            raise_api_error(status.HTTP_400_BAD_REQUEST, "invalid_invite_code", "邀请码无效")
 
         existing_user = db.execute(
             "SELECT id FROM users WHERE username_normalized = ?",
@@ -85,7 +86,7 @@ def register(payload: RegisterRequest, response: Response, db: sqlite3.Connectio
         ).fetchone()
         if existing_user is not None:
             db.execute("ROLLBACK")
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="用户名已存在")
+            raise_api_error(status.HTTP_409_CONFLICT, "username_exists", "用户名已存在")
 
         cursor = db.execute(
             """
@@ -111,7 +112,7 @@ def register(payload: RegisterRequest, response: Response, db: sqlite3.Connectio
         raise
     except sqlite3.Error as exc:
         db.execute("ROLLBACK")
-        raise HTTPException(status_code=500, detail="注册失败") from exc
+        raise_api_error(status.HTTP_500_INTERNAL_SERVER_ERROR, "register_failed", "注册失败")
 
     _set_session_cookie(response, token)
     return AuthResponse(user=UserPublic(id=user_id, username=username))
@@ -127,7 +128,7 @@ def login(payload: LoginRequest, response: Response, db: sqlite3.Connection = De
         (normalize_username(payload.username),),
     ).fetchone()
     if user is None or not verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+        raise_api_error(status.HTTP_401_UNAUTHORIZED, "invalid_credentials", "用户名或密码错误")
 
     token = _create_session(db, int(user["id"]))
     db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utcish_now_iso(), user["id"]))
