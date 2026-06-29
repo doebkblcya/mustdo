@@ -346,7 +346,7 @@ scripts/server.sh restart
 scripts/server.sh stop
 ```
 
-`scripts/server.sh` 默认绑定 `127.0.0.1:8000`，适合由 Nginx/Caddy 反向代理到公网 HTTPS；运行日志在 `backend/logs/uvicorn.log`，pid 文件在 `backend/run/uvicorn.pid`。
+`scripts/server.sh` 默认绑定 `0.0.0.0:8000`；运行日志在 `backend/logs/uvicorn.log`，pid 文件在 `backend/run/uvicorn.pid`。如需只允许本机反向代理访问，可用 `HOST=127.0.0.1 scripts/server.sh start`。
 
 前端开发服务：
 

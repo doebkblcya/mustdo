@@ -108,10 +108,10 @@ scripts/server.sh restart
 scripts/server.sh stop
 ```
 
-脚本默认绑定 `127.0.0.1:8000`，适合放在 Nginx/Caddy 后面反向代理。日志写入 `backend/logs/uvicorn.log`，pid 写入 `backend/run/uvicorn.pid`。如需直接暴露端口：
+脚本默认绑定 `0.0.0.0:8000`。日志写入 `backend/logs/uvicorn.log`，pid 写入 `backend/run/uvicorn.pid`。如需只允许本机反向代理访问：
 
 ```bash
-HOST=0.0.0.0 PORT=8000 scripts/server.sh start
+HOST=127.0.0.1 PORT=8000 scripts/server.sh start
 ```
 
 前端开发服务：

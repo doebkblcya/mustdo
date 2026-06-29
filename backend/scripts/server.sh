@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_MODULE="${APP_MODULE:-app.main:app}"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 WORKERS="${WORKERS:-1}"
 UV_BIN="${UV_BIN:-uv}"
@@ -24,7 +24,7 @@ usage() {
 Usage: $(basename "$0") <start|stop|restart|status|logs>
 
 Environment overrides:
-  HOST=127.0.0.1                 Bind host. Use 0.0.0.0 only when directly exposing the app.
+  HOST=0.0.0.0                   Bind host.
   PORT=8000                      Bind port.
   WORKERS=1                      Uvicorn worker count.
   APP_MODULE=app.main:app        ASGI app module.
@@ -42,7 +42,7 @@ Examples:
   scripts/server.sh start
   scripts/server.sh status
   scripts/server.sh logs
-  HOST=0.0.0.0 PORT=8000 scripts/server.sh restart
+  HOST=127.0.0.1 PORT=8000 scripts/server.sh restart
 EOF
 }
 
