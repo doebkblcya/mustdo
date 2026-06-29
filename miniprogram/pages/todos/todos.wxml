@@ -43,13 +43,14 @@
   <view wx:if="{{voiceMessage || transcript}}" class="voice-panel glass">
     <text class="voice-title">{{voiceMessage}}</text>
     <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
+    <text wx:if="{{voiceDebug}}" class="voice-debug">{{voiceDebug}}</text>
   </view>
 
   <button
     class="voice-button {{recording ? 'recording' : ''}}"
-    bindtouchstart="startVoice"
-    bindtouchend="stopVoice"
-    bindtouchcancel="stopVoice"
+    catchtouchstart="startVoice"
+    catchtouchend="stopVoice"
+    catchtouchcancel="stopVoice"
   >
     按住说话
   </button>

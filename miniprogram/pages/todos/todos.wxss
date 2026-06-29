@@ -137,7 +137,8 @@
 }
 
 .voice-title,
-.transcript {
+.transcript,
+.voice-debug {
   display: block;
   font-size: 27rpx;
 }
@@ -145,6 +146,14 @@
 .transcript {
   margin-top: 14rpx;
   color: rgba(35, 45, 55, 0.78);
+}
+
+.voice-debug {
+  margin-top: 12rpx;
+  color: rgba(35, 45, 55, 0.52);
+  font-size: 22rpx;
+  line-height: 1.45;
+  word-break: break-all;
 }
 
 .voice-button {

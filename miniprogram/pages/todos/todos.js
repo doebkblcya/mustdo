@@ -18,6 +18,7 @@ Page({
     error: "",
     recording: false,
     voiceMessage: "",
+    voiceDebug: "",
     transcript: "",
   },
 
@@ -30,6 +31,8 @@ Page({
   voiceEndSent: false,
   voiceDone: false,
   pendingFrames: [],
+  frameCount: 0,
+  audioBytes: 0,
 
   onLoad() {
     if (!api.getToken()) {
@@ -121,6 +124,7 @@ Page({
     this.recorder.onStart(() => {
       console.log("recorder start");
       this.recorderStarted = true;
+      this.updateVoiceDebug("recorder=started");
       if (this.stopRequested) {
         setTimeout(() => this.stopRecorder(), 80);
         return;
@@ -132,8 +136,12 @@ Page({
     });
 
     this.recorder.onFrameRecorded((event) => {
-      console.log("voice frame bytes", event.frameBuffer && event.frameBuffer.byteLength);
+      const byteLength = event.frameBuffer ? event.frameBuffer.byteLength : 0;
+      console.log("voice frame bytes", byteLength);
       if (event.frameBuffer) {
+        this.frameCount += 1;
+        this.audioBytes += byteLength;
+        this.updateVoiceDebug();
         this.sendOrQueueFrame(event.frameBuffer);
       }
     });
@@ -142,20 +150,28 @@ Page({
       console.log("recorder stop");
       this.recorderStarted = false;
       this.voiceEnded = true;
+      this.updateVoiceDebug("recorder=stopped");
       this.sendVoiceEndIfReady();
     });
 
     this.recorder.onError((error) => {
       console.error("recorder error", error);
       this.recorderStarted = false;
+      this.updateVoiceDebug("recorder=error");
       this.failVoice(error.errMsg || "录音失败");
     });
   },
 
-  startVoice() {
+  async startVoice() {
     if (this.data.recording) return;
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
+      return;
+    }
+    try {
+      await this.ensureRecordPermission();
+    } catch (_error) {
+      this.failVoice("请先授权麦克风");
       return;
     }
 
@@ -163,6 +179,7 @@ Page({
     this.setData({
       recording: false,
       voiceMessage: "正在准备语音服务",
+      voiceDebug: "socket=连接中 recorder=启动中 frames=0 bytes=0",
       transcript: "",
     });
 
@@ -186,6 +203,25 @@ Page({
     } catch (error) {
       this.failVoice(error.errMsg || error.message || "录音启动失败");
     }
+  },
+
+  ensureRecordPermission() {
+    return new Promise((resolve, reject) => {
+      wx.getSetting({
+        success: (settings) => {
+          if (settings.authSetting["scope.record"]) {
+            resolve();
+            return;
+          }
+          wx.authorize({
+            scope: "scope.record",
+            success: resolve,
+            fail: reject,
+          });
+        },
+        fail: reject,
+      });
+    });
   },
 
   stopVoice() {
@@ -213,6 +249,7 @@ Page({
   bindVoiceSocket(socketTask) {
     socketTask.onOpen(() => {
       console.log("voice socket open");
+      this.updateVoiceDebug("socket=open");
     });
 
     socketTask.onMessage((event) => {
@@ -227,6 +264,7 @@ Page({
 
       if (message.type === "ready") {
         this.socketReady = true;
+        this.updateVoiceDebug("socket=ready");
         this.flushVoiceFrames();
         this.setData({ voiceMessage: this.data.recording ? "正在录音" : "正在等待最终文本" });
         this.sendVoiceEndIfReady();
@@ -257,11 +295,13 @@ Page({
 
     socketTask.onError((error) => {
       console.error("voice socket error", error);
+      this.updateVoiceDebug("socket=error");
       this.failVoice("语音连接失败");
     });
 
     socketTask.onClose((event) => {
       console.log("voice socket close", event);
+      this.updateVoiceDebug("socket=closed");
       if (this.data.voiceMessage && !this.voiceDone && !this.voiceEndSent) {
         this.failVoice("语音连接已断开");
       }
@@ -271,11 +311,16 @@ Page({
   sendOrQueueFrame(frameBuffer) {
     if (!this.socketReady || !this.socketTask) {
       this.pendingFrames.push(frameBuffer);
+      this.updateVoiceDebug("frame=queued");
       return;
     }
     this.socketTask.send({
       data: frameBuffer,
-      fail: (error) => console.error("send frame failed", error),
+      success: () => this.updateVoiceDebug("frame=sent"),
+      fail: (error) => {
+        console.error("send frame failed", error);
+        this.updateVoiceDebug("frame=send_failed");
+      },
     });
   },
 
@@ -291,8 +336,24 @@ Page({
     this.voiceEndSent = true;
     this.socketTask.send({
       data: JSON.stringify({ type: "end" }),
-      fail: (error) => console.error("send end failed", error),
+      success: () => this.updateVoiceDebug("end=sent"),
+      fail: (error) => {
+        console.error("send end failed", error);
+        this.updateVoiceDebug("end=send_failed");
+      },
     });
+  },
+
+  updateVoiceDebug(extra) {
+    const parts = [
+      `socket=${this.socketReady ? "ready" : this.socketTask ? "open" : "none"}`,
+      `recorder=${this.recorderStarted ? "started" : "stopped"}`,
+      `frames=${this.frameCount}`,
+      `bytes=${this.audioBytes}`,
+      `queued=${this.pendingFrames.length}`,
+    ];
+    if (extra) parts.push(extra);
+    this.setData({ voiceDebug: parts.join(" ") });
   },
 
   async createTodosFromVoice(transcript) {
@@ -342,5 +403,7 @@ Page({
     this.voiceEndSent = false;
     this.voiceDone = false;
     this.pendingFrames = [];
+    this.frameCount = 0;
+    this.audioBytes = 0;
   },
 });
