@@ -196,8 +196,7 @@ Page({
         duration: 30000,
         sampleRate: 16000,
         numberOfChannels: 1,
-        encodeBitRate: 256000,
-        format: "PCM",
+        format: "pcm",
         frameSize: 4,
       });
     } catch (error) {
