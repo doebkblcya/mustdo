@@ -12,14 +12,21 @@ Page({
     activeView: "today",
     viewTitle: "今天",
     viewDate: "",
+    todayDate: "",
     items: [],
     todos: null,
     loading: false,
     error: "",
     recording: false,
     voiceMessage: "",
-    voiceDebug: "",
     transcript: "",
+    editVisible: false,
+    editTodoId: null,
+    editContent: "",
+    editDate: "",
+    editTime: "",
+    editUseTime: false,
+    editSubmitting: false,
   },
 
   recorder: null,
@@ -31,8 +38,6 @@ Page({
   voiceEndSent: false,
   voiceDone: false,
   pendingFrames: [],
-  frameCount: 0,
-  audioBytes: 0,
 
   onLoad() {
     if (!api.getToken()) {
@@ -52,7 +57,7 @@ Page({
     this.setData({ loading: true, error: "" });
     try {
       const todos = await api.listTodos();
-      this.setData({ todos, loading: false });
+      this.setData({ todos, loading: false, todayDate: todos.today_date || "" });
       this.applyActiveView(this.data.activeView);
     } catch (error) {
       if (error.statusCode === 401) {
@@ -112,6 +117,75 @@ Page({
     });
   },
 
+  editTodo(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const todo = this.findTodo(id);
+    if (!todo) {
+      wx.showToast({ title: "待办不存在", icon: "none" });
+      return;
+    }
+    this.setData({
+      editVisible: true,
+      editTodoId: todo.id,
+      editContent: todo.content,
+      editDate: todo.due_date,
+      editTime: todo.due_time || "09:00",
+      editUseTime: Boolean(todo.due_time),
+      editSubmitting: false,
+    });
+  },
+
+  findTodo(id) {
+    const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
+    return [...(groups.today || []), ...(groups.tomorrow || []), ...(groups.upcoming || [])].find((item) => item.id === id);
+  },
+
+  onEditContentInput(event) {
+    this.setData({ editContent: event.detail.value });
+  },
+
+  onEditDateChange(event) {
+    this.setData({ editDate: event.detail.value });
+  },
+
+  onEditTimeChange(event) {
+    this.setData({ editTime: event.detail.value });
+  },
+
+  onEditUseTimeChange(event) {
+    this.setData({ editUseTime: event.detail.value });
+  },
+
+  cancelEdit() {
+    if (this.data.editSubmitting) return;
+    this.setData({ editVisible: false, editTodoId: null, error: "" });
+  },
+
+  noop() {},
+
+  async submitEdit() {
+    if (this.data.editSubmitting) return;
+    const content = this.data.editContent.trim();
+    if (!content) {
+      wx.showToast({ title: "内容不能为空", icon: "none" });
+      return;
+    }
+    this.setData({ editSubmitting: true });
+    try {
+      await api.updateTodo(this.data.editTodoId, {
+        content,
+        due_date: this.data.editDate,
+        due_time: this.data.editUseTime ? this.data.editTime : null,
+      });
+      this.setData({ editVisible: false, editTodoId: null });
+      await this.loadTodos();
+    } catch (error) {
+      wx.showToast({ title: error.message || "保存失败", icon: "none" });
+    } finally {
+      this.setData({ editSubmitting: false });
+    }
+  },
+
   async logout() {
     await api.logout();
     wx.redirectTo({ url: "/pages/auth/auth" });
@@ -122,9 +196,7 @@ Page({
     this.recorder = wx.getRecorderManager();
 
     this.recorder.onStart(() => {
-      console.log("recorder start");
       this.recorderStarted = true;
-      this.updateVoiceDebug("recorder=started");
       if (this.stopRequested) {
         setTimeout(() => this.stopRecorder(), 80);
         return;
@@ -136,28 +208,19 @@ Page({
     });
 
     this.recorder.onFrameRecorded((event) => {
-      const byteLength = event.frameBuffer ? event.frameBuffer.byteLength : 0;
-      console.log("voice frame bytes", byteLength);
       if (event.frameBuffer) {
-        this.frameCount += 1;
-        this.audioBytes += byteLength;
-        this.updateVoiceDebug();
         this.sendOrQueueFrame(event.frameBuffer);
       }
     });
 
     this.recorder.onStop(() => {
-      console.log("recorder stop");
       this.recorderStarted = false;
       this.voiceEnded = true;
-      this.updateVoiceDebug("recorder=stopped");
       this.sendVoiceEndIfReady();
     });
 
     this.recorder.onError((error) => {
-      console.error("recorder error", error);
       this.recorderStarted = false;
-      this.updateVoiceDebug("recorder=error");
       this.failVoice(error.errMsg || "录音失败");
     });
   },
@@ -179,7 +242,6 @@ Page({
     this.setData({
       recording: false,
       voiceMessage: "正在准备语音服务",
-      voiceDebug: "socket=连接中 recorder=启动中 frames=0 bytes=0",
       transcript: "",
     });
 
@@ -234,25 +296,21 @@ Page({
 
   stopRecorder() {
     if (!this.recorderStarted) {
-      console.log("recorder stop skipped: not started");
       return;
     }
     try {
       this.recorder.stop();
     } catch (error) {
-      console.warn("recorder stop failed", error);
       this.recorderStarted = false;
     }
   },
 
   bindVoiceSocket(socketTask) {
     socketTask.onOpen(() => {
-      console.log("voice socket open");
-      this.updateVoiceDebug("socket=open");
+      return;
     });
 
     socketTask.onMessage((event) => {
-      console.log("voice socket message", event.data);
       let message;
       try {
         message = JSON.parse(event.data);
@@ -263,7 +321,6 @@ Page({
 
       if (message.type === "ready") {
         this.socketReady = true;
-        this.updateVoiceDebug("socket=ready");
         this.flushVoiceFrames();
         this.setData({ voiceMessage: this.data.recording ? "正在录音" : "正在等待最终文本" });
         this.sendVoiceEndIfReady();
@@ -293,15 +350,13 @@ Page({
     });
 
     socketTask.onError((error) => {
-      console.error("voice socket error", error);
-      this.updateVoiceDebug("socket=error");
+      void error;
       this.failVoice("语音连接失败");
     });
 
     socketTask.onClose((event) => {
-      console.log("voice socket close", event);
-      this.updateVoiceDebug("socket=closed");
-      if (this.data.voiceMessage && !this.voiceDone && !this.voiceEndSent) {
+      void event;
+      if (this.data.voiceMessage && !this.voiceDone) {
         this.failVoice("语音连接已断开");
       }
     });
@@ -310,16 +365,11 @@ Page({
   sendOrQueueFrame(frameBuffer) {
     if (!this.socketReady || !this.socketTask) {
       this.pendingFrames.push(frameBuffer);
-      this.updateVoiceDebug("frame=queued");
       return;
     }
     this.socketTask.send({
       data: frameBuffer,
-      success: () => this.updateVoiceDebug("frame=sent"),
-      fail: (error) => {
-        console.error("send frame failed", error);
-        this.updateVoiceDebug("frame=send_failed");
-      },
+      fail: () => this.failVoice("语音发送失败"),
     });
   },
 
@@ -335,24 +385,8 @@ Page({
     this.voiceEndSent = true;
     this.socketTask.send({
       data: JSON.stringify({ type: "end" }),
-      success: () => this.updateVoiceDebug("end=sent"),
-      fail: (error) => {
-        console.error("send end failed", error);
-        this.updateVoiceDebug("end=send_failed");
-      },
+      fail: () => this.failVoice("语音发送失败"),
     });
-  },
-
-  updateVoiceDebug(extra) {
-    const parts = [
-      `socket=${this.socketReady ? "ready" : this.socketTask ? "open" : "none"}`,
-      `recorder=${this.recorderStarted ? "started" : "stopped"}`,
-      `frames=${this.frameCount}`,
-      `bytes=${this.audioBytes}`,
-      `queued=${this.pendingFrames.length}`,
-    ];
-    if (extra) parts.push(extra);
-    this.setData({ voiceDebug: parts.join(" ") });
   },
 
   async createTodosFromVoice(transcript) {
@@ -402,7 +436,5 @@ Page({
     this.voiceEndSent = false;
     this.voiceDone = false;
     this.pendingFrames = [];
-    this.frameCount = 0;
-    this.audioBytes = 0;
   },
 });

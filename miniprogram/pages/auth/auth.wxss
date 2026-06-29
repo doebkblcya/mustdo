@@ -1,22 +1,34 @@
 .auth-page {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
 }
 
-.auth-panel {
-  width: 100%;
-  max-width: 640rpx;
-  padding: 44rpx;
-  box-sizing: border-box;
+.auth-header {
+  margin-bottom: 44rpx;
 }
 
 .title {
   display: block;
-  margin-bottom: 34rpx;
-  color: rgba(13, 18, 24, 0.92);
-  font-size: 42rpx;
+  color: #14201a;
+  font-size: 58rpx;
   font-weight: 800;
+  line-height: 1.05;
+}
+
+.headline {
+  display: block;
+  margin-top: 16rpx;
+  color: #66716a;
+  font-size: 28rpx;
+}
+
+.auth-panel {
+  padding: 28rpx;
+  border: 1rpx solid #e4e9e3;
+  border-radius: 34rpx;
+  background: #ffffff;
+  box-shadow: 0 18rpx 46rpx rgba(24, 40, 32, 0.08);
 }
 
 .tabs {
@@ -24,30 +36,31 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 8rpx;
   margin-bottom: 24rpx;
-  padding: 6rpx;
-  border: 1rpx solid rgba(118, 128, 140, 0.3);
-  border-radius: 30rpx;
+  padding: 8rpx;
+  border-radius: 28rpx;
+  background: #f1f5f1;
 }
 
 .tab {
-  min-height: 64rpx;
-  border-radius: 24rpx;
-  color: rgba(35, 45, 55, 0.62);
+  height: 66rpx;
+  border-radius: 22rpx;
+  color: #717b74;
   font-size: 28rpx;
 }
 
 .tab.active {
-  background: rgba(255, 255, 255, 0.58);
-  color: rgba(13, 18, 24, 0.92);
-  box-shadow: 0 10rpx 24rpx rgba(30, 38, 46, 0.08), inset 0 1rpx 0 rgba(255, 255, 255, 0.8);
+  background: #ffffff;
+  color: #17664a;
+  font-weight: 700;
+  box-shadow: 0 8rpx 20rpx rgba(24, 40, 32, 0.06);
 }
 
 .field {
-  margin-bottom: 20rpx;
+  margin-bottom: 18rpx;
 }
 
 .error-text {
   display: block;
-  min-height: 44rpx;
-  margin-bottom: 10rpx;
+  min-height: 42rpx;
+  margin-bottom: 8rpx;
 }

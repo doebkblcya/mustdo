@@ -4,10 +4,10 @@
     "pages/todos/todos"
   ],
   "window": {
-    "navigationBarTitleText": "Todo Analyzer",
-    "navigationBarBackgroundColor": "#f7f8f8",
+    "navigationBarTitleText": "mustdo",
+    "navigationBarBackgroundColor": "#f6f8f5",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#ffffff"
+    "backgroundColor": "#f6f8f5"
   },
   "sitemapLocation": "sitemap.json"
 }

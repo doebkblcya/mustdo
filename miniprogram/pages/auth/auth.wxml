@@ -1,7 +1,10 @@
 <view class="auth-page page">
-  <view class="auth-panel glass">
-    <text class="title">Todo Analyzer</text>
+  <view class="auth-header">
+    <text class="title">mustdo</text>
+    <text class="headline">{{mode === 'register' ? '创建账号' : '欢迎回来'}}</text>
+  </view>
 
+  <view class="auth-panel">
     <view class="tabs">
       <button class="tab {{mode === 'login' ? 'active' : ''}}" bindtap="switchToLogin">登录</button>
       <button class="tab {{mode === 'register' ? 'active' : ''}}" bindtap="switchToRegister">注册</button>

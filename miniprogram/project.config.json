@@ -2,7 +2,7 @@
   "appid": "wxcfaa39fb0d7227aa",
   "compileType": "miniprogram",
   "libVersion": "latest",
-  "projectname": "todo-analyzer-miniprogram",
+  "projectname": "mustdo-miniprogram",
   "setting": {
     "urlCheck": true,
     "es6": true,

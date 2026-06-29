@@ -1,49 +1,49 @@
 <view class="todos-page page">
-  <view class="topbar glass">
+  <view class="app-header">
     <view>
-      <text class="brand">Todo Analyzer</text>
+      <text class="brand">mustdo</text>
       <text class="user">{{user ? user.username : ''}}</text>
     </view>
-    <button class="logout" bindtap="logout">退出</button>
+    <button class="logout-button" bindtap="logout">退出</button>
   </view>
 
-  <view class="tabs glass">
+  <view class="summary">
+    <text class="summary-title">{{viewTitle}}</text>
+    <text class="summary-date">{{viewDate}}</text>
+    <text class="summary-count">{{items.length}} 项</text>
+  </view>
+
+  <view class="tabs">
     <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">今天</button>
     <button class="tab {{activeView === 'tomorrow' ? 'active' : ''}}" data-view="tomorrow" bindtap="switchView">明天</button>
     <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">后续</button>
   </view>
 
-  <view class="todo-panel glass">
-    <view class="panel-head">
-      <view>
-        <text class="panel-title">{{viewTitle}}</text>
-        <text class="panel-date">{{viewDate}}</text>
-      </view>
-      <text class="count">{{items.length}} 项</text>
-    </view>
-
+  <view class="todo-list">
     <view wx:if="{{loading}}" class="empty">加载中</view>
     <view wx:elif="{{error}}" class="error-text">{{error}}</view>
     <view wx:elif="{{items.length === 0}}" class="empty">暂无待办</view>
 
     <block wx:else>
-      <view wx:for="{{items}}" wx:key="id" class="todo-row {{item.status === 'done' ? 'done' : ''}}">
-        <button class="check" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="toggleTodo">
+      <view wx:for="{{items}}" wx:key="id" class="todo-item {{item.status === 'done' ? 'done' : ''}}">
+        <button class="check-button" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="toggleTodo">
           {{item.status === 'done' ? '✓' : ''}}
         </button>
-        <view class="todo-main">
+        <view class="todo-content">
           <text class="todo-title">{{item.content}}</text>
           <text class="todo-meta">{{item.meta}}</text>
         </view>
-        <button class="delete" data-id="{{item.id}}" bindtap="deleteTodo">删</button>
+        <view class="todo-actions">
+          <button class="action-button" data-id="{{item.id}}" bindtap="editTodo">改</button>
+          <button class="action-button danger" data-id="{{item.id}}" bindtap="deleteTodo">删</button>
+        </view>
       </view>
     </block>
   </view>
 
-  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel glass">
+  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel">
     <text class="voice-title">{{voiceMessage}}</text>
     <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
-    <text wx:if="{{voiceDebug}}" class="voice-debug">{{voiceDebug}}</text>
   </view>
 
   <button
@@ -52,6 +52,41 @@
     catchtouchend="stopVoice"
     catchtouchcancel="stopVoice"
   >
-    按住说话
+    {{recording ? '松开完成' : '按住说话'}}
   </button>
+
+  <view wx:if="{{editVisible}}" class="sheet-mask" catchtap="cancelEdit">
+    <view class="edit-sheet" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">修改待办</text>
+        <button class="sheet-close" bindtap="cancelEdit">×</button>
+      </view>
+
+      <input
+        class="field edit-field"
+        value="{{editContent}}"
+        placeholder="待办内容"
+        confirm-type="done"
+        bindinput="onEditContentInput"
+      />
+
+      <view class="edit-row">
+        <text class="edit-label">日期</text>
+        <picker mode="date" value="{{editDate}}" start="{{todayDate}}" bindchange="onEditDateChange">
+          <view class="picker-value">{{editDate}}</view>
+        </picker>
+      </view>
+
+      <view class="edit-row">
+        <text class="edit-label">时间</text>
+        <switch checked="{{editUseTime}}" color="#17664a" bindchange="onEditUseTimeChange" />
+      </view>
+
+      <picker wx:if="{{editUseTime}}" mode="time" value="{{editTime}}" bindchange="onEditTimeChange">
+        <view class="time-picker">{{editTime}}</view>
+      </picker>
+
+      <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存</button>
+    </view>
+  </view>
 </view>

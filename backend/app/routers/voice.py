@@ -93,7 +93,6 @@ async def stream_transcription(websocket: WebSocket):
     send_lock = asyncio.Lock()
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
     total_audio_bytes = 0
-    received_audio_frames = 0
 
     def audio_seconds() -> float:
         return total_audio_bytes / PCM_BYTES_PER_SECOND
@@ -103,7 +102,7 @@ async def stream_transcription(websocket: WebSocket):
             await websocket.send_json(payload)
 
     async def read_browser_audio() -> None:
-        nonlocal received_audio_frames, total_audio_bytes
+        nonlocal total_audio_bytes
         while True:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
@@ -116,14 +115,6 @@ async def stream_transcription(websocket: WebSocket):
                     raise VoiceStreamClientError("音频帧长度不合法")
                 audio_bytes = bytes(audio)
                 total_audio_bytes += len(audio_bytes)
-                received_audio_frames += 1
-                if received_audio_frames == 1:
-                    logger.info(
-                        "voice_stream_first_audio_frame stream_id=%s elapsed_ms=%s bytes=%s",
-                        stream_id,
-                        _elapsed_ms(stream_started_at),
-                        len(audio_bytes),
-                    )
                 if audio_seconds() > settings.max_audio_seconds:
                     raise VoiceStreamClientError("录音超过 30 秒", close_code=1009)
                 await audio_queue.put(audio_bytes)
@@ -139,13 +130,6 @@ async def stream_transcription(websocket: WebSocket):
             if payload.get("type") != "end":
                 continue
 
-            logger.info(
-                "voice_stream_client_end stream_id=%s elapsed_ms=%s audio_seconds=%.3f frames=%s",
-                stream_id,
-                _elapsed_ms(stream_started_at),
-                audio_seconds(),
-                received_audio_frames,
-            )
             if audio_seconds() < settings.min_audio_seconds:
                 raise VoiceStreamClientError("录音太短")
 
