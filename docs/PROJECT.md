@@ -22,6 +22,12 @@ Vite React Frontend
   - 待办时间页和手动编辑
         |
         v
+微信小程序
+  - Bearer Token 登录/注册
+  - 按住说话并发送 PCM
+  - 复用同一套待办 API
+        |
+        v
 FastAPI Backend
   - Session 认证和用户隔离
   - SQLite 持久化
@@ -86,6 +92,7 @@ backend/
 - 注册需要 `username`、`password`、`invite_code`。
 - 登录只需要 `username`、`password`。
 - Web 端使用 HttpOnly Cookie 保存 session。
+- 小程序端使用 Bearer Token，仍复用后端 `sessions` 表。
 - 所有待办 API 都从 session 解析 `user_id`，前端不传 `user_id`。
 - 暂不支持忘记密码、邮箱、手机号和第三方登录。
 
@@ -155,6 +162,8 @@ backend/
 
 - `POST /api/auth/register`：用户名/密码/邀请码注册
 - `POST /api/auth/login`：登录
+- `POST /api/auth/token/register`：注册并返回 Bearer Token，供小程序使用
+- `POST /api/auth/token/login`：登录并返回 Bearer Token，供小程序使用
 - `POST /api/auth/logout`：登出
 - `GET /api/me`：当前用户
 - `GET /api/todos`：获取今天/明天/后续分组
@@ -253,6 +262,39 @@ Web Demo 使用浏览器 Web Audio API：
 - 使用白色内高光、灰色折射边缘和柔和阴影提升层次。
 - 今天/明天/后续 tab 使用滑动玻璃指示器。
 
+## 微信小程序
+
+小程序位于 `miniprogram/`，当前是原生小程序项目骨架。
+
+### 目录结构
+
+```text
+miniprogram/
+  app.json              小程序页面和窗口配置
+  app.js                全局启动逻辑
+  app.wxss              全局样式
+  config.js             后端 API 地址
+  pages/
+    auth/               登录 / 注册
+    todos/              待办列表和语音输入
+  utils/api.js          Bearer Token API client
+```
+
+小程序不使用浏览器 Cookie，登录/注册调用 `/api/auth/token/*` 获取 Bearer Token，后续请求带：
+
+```text
+Authorization: Bearer <token>
+```
+
+微信后台需要配置：
+
+```text
+request 合法域名：https://doebkblcya.com
+socket 合法域名：wss://doebkblcya.com
+```
+
+语音链路仍复用后端 `/api/voice/stream`，小程序端用 `wx.getRecorderManager` 采集 `16kHz/mono/PCM` 帧，通过 `wx.connectSocket` 发送给后端。真机调试时如果微信录音格式不符合预期，优先调整小程序端录音参数，后端讯飞代理逻辑不变。
+
 ## 当前进度
 
 已完成：
@@ -269,6 +311,8 @@ Web Demo 使用浏览器 Web Audio API：
 - 前端按住说话。
 - 前端 PCM 下采样和 WebSocket 流式上传。
 - 前端从单文件原生 JS 迁移为 Vite + React + TypeScript。
+- 新增微信小程序骨架。
+- 后端支持 Bearer Token session，供小程序复用 API。
 - 讯飞语音听写 WebAPI 封装。
 - 语音流式编排服务，`ready` 只代表讯飞服务已连接。
 - DeepSeek JSON 解析封装。

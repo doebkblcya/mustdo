@@ -418,7 +418,7 @@ class WebSocketAuthTests(unittest.TestCase):
         get_settings.cache_clear()
 
     def test_websocket_user_id_rejects_missing_cookie(self) -> None:
-        websocket = SimpleNamespace(cookies={})
+        websocket = SimpleNamespace(cookies={}, headers={})
         with get_connection() as db:
             self.assertIsNone(_websocket_user_id(websocket, db))
 
@@ -450,7 +450,39 @@ class WebSocketAuthTests(unittest.TestCase):
             )
             db.commit()
 
-        websocket = SimpleNamespace(cookies={"todo_session": session_token})
+        websocket = SimpleNamespace(cookies={"todo_session": session_token}, headers={})
+        with get_connection() as db:
+            self.assertEqual(_websocket_user_id(websocket, db), user_id)
+
+    def test_websocket_user_id_accepts_bearer_session(self) -> None:
+        session_token = "raw-bearer-token"
+        now = now_shanghai()
+        with get_connection() as db:
+            cursor = db.execute(
+                """
+                INSERT INTO users (
+                    username, username_normalized, password_hash, status, created_at, updated_at
+                )
+                VALUES ('tester', 'tester', 'hash', 'active', ?, ?)
+                """,
+                (now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds")),
+            )
+            user_id = int(cursor.lastrowid)
+            db.execute(
+                """
+                INSERT INTO sessions (user_id, token_hash, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    hash_session_token(session_token),
+                    now.isoformat(timespec="seconds"),
+                    (now + timedelta(days=1)).isoformat(timespec="seconds"),
+                ),
+            )
+            db.commit()
+
+        websocket = SimpleNamespace(cookies={}, headers={"authorization": f"Bearer {session_token}"})
         with get_connection() as db:
             self.assertEqual(_websocket_user_id(websocket, db), user_id)
 
@@ -482,7 +514,7 @@ class WebSocketAuthTests(unittest.TestCase):
             )
             db.commit()
 
-        websocket = SimpleNamespace(cookies={"todo_session": session_token})
+        websocket = SimpleNamespace(cookies={"todo_session": session_token}, headers={})
         with get_connection() as db:
             self.assertIsNone(_websocket_user_id(websocket, db))
 

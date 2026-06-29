@@ -44,6 +44,13 @@ Web Demo 不是临时页面，而是用于验证后端 API、语音链路、AI p
 - Web Audio API 录音和 PCM 下采样
 - 独立开发服务，生产构建产物可由 FastAPI 托管
 
+小程序：
+
+- 微信小程序原生项目
+- Bearer Token Session
+- `wx.request` 访问 HTTPS API
+- `wx.connectSocket` 访问语音 WebSocket
+
 ## 项目结构
 
 ```text
@@ -80,6 +87,11 @@ Web Demo 不是临时页面，而是用于验证后端 API、语音链路、AI p
 │       ├── todos/                  待办页面组件
 │       ├── voice/                  录音、WebSocket 和语音组件
 │       └── styles.css              Liquid glass UI
+├── miniprogram/
+│   ├── app.json                    微信小程序入口配置
+│   ├── config.js                   后端 API 地址
+│   ├── pages/                      登录、待办和语音页面
+│   └── utils/api.js                Bearer Token API client
 └── docs/
     └── PROJECT.md                  架构、进度和展望
 ```
@@ -235,6 +247,8 @@ uv run python scripts/cleanup_overdue.py
 
 - `POST /api/auth/register`：用户名/密码/邀请码注册
 - `POST /api/auth/login`：登录
+- `POST /api/auth/token/register`：注册并返回 Bearer Token，供小程序使用
+- `POST /api/auth/token/login`：登录并返回 Bearer Token，供小程序使用
 - `POST /api/auth/logout`：登出
 - `GET /api/me`：当前用户
 - `GET /api/todos`：获取今天/明天/后续分组

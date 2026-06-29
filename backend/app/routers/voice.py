@@ -12,16 +12,14 @@ from fastapi import APIRouter, Depends, File, Response, UploadFile, WebSocket, s
 
 from app.config import get_settings
 from app.db import get_connection
-from app.deps import current_user, get_db
+from app.deps import bearer_token_from_authorization, current_user, get_db, user_from_session_token
 from app.errors import raise_api_error
 from app.schemas import AiCreateRequest, AiCreateResponse, TranscriptionResponse
-from app.security import hash_session_token
 from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm
 from app.services.deepseek import DeepSeekParseError, NoTodoParsedError, parse_todos_with_deepseek
 from app.services.iflytek import IflytekError, IflytekIatClient
 from app.services.todos import create_todos
 from app.services.voice_stream import VoiceStreamEvent, transcribe_pcm_stream
-from app.time_utils import utcish_now_iso
 
 
 router = APIRouter(prefix="/api", tags=["voice"])
@@ -34,22 +32,9 @@ def _elapsed_ms(started_at: float) -> int:
 
 def _websocket_user_id(websocket: WebSocket, db: sqlite3.Connection) -> int | None:
     settings = get_settings()
-    session_token = websocket.cookies.get(settings.session_cookie_name)
-    if not session_token:
-        return None
-
-    row = db.execute(
-        """
-        SELECT users.id
-        FROM sessions
-        JOIN users ON users.id = sessions.user_id
-        WHERE sessions.token_hash = ?
-          AND sessions.revoked_at IS NULL
-          AND sessions.expires_at > ?
-          AND users.status = 'active'
-        """,
-        (hash_session_token(session_token), utcish_now_iso()),
-    ).fetchone()
+    bearer_token = bearer_token_from_authorization(websocket.headers.get("authorization"))
+    session_token = bearer_token or websocket.cookies.get(settings.session_cookie_name)
+    row = user_from_session_token(db, session_token)
     if row is None:
         return None
     return int(row["id"])

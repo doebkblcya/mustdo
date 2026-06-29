@@ -1,0 +1,56 @@
+<view class="todos-page page">
+  <view class="topbar glass">
+    <view>
+      <text class="brand">Todo Analyzer</text>
+      <text class="user">{{user ? user.username : ''}}</text>
+    </view>
+    <button class="logout" bindtap="logout">退出</button>
+  </view>
+
+  <view class="tabs glass">
+    <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">今天</button>
+    <button class="tab {{activeView === 'tomorrow' ? 'active' : ''}}" data-view="tomorrow" bindtap="switchView">明天</button>
+    <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">后续</button>
+  </view>
+
+  <view class="todo-panel glass">
+    <view class="panel-head">
+      <view>
+        <text class="panel-title">{{viewTitle}}</text>
+        <text class="panel-date">{{viewDate}}</text>
+      </view>
+      <text class="count">{{items.length}} 项</text>
+    </view>
+
+    <view wx:if="{{loading}}" class="empty">加载中</view>
+    <view wx:elif="{{error}}" class="error-text">{{error}}</view>
+    <view wx:elif="{{items.length === 0}}" class="empty">暂无待办</view>
+
+    <block wx:else>
+      <view wx:for="{{items}}" wx:key="id" class="todo-row {{item.status === 'done' ? 'done' : ''}}">
+        <button class="check" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="toggleTodo">
+          {{item.status === 'done' ? '✓' : ''}}
+        </button>
+        <view class="todo-main">
+          <text class="todo-title">{{item.content}}</text>
+          <text class="todo-meta">{{item.meta}}</text>
+        </view>
+        <button class="delete" data-id="{{item.id}}" bindtap="deleteTodo">删</button>
+      </view>
+    </block>
+  </view>
+
+  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel glass">
+    <text class="voice-title">{{voiceMessage}}</text>
+    <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
+  </view>
+
+  <button
+    class="voice-button {{recording ? 'recording' : ''}}"
+    bindtouchstart="startVoice"
+    bindtouchend="stopVoice"
+    bindtouchcancel="stopVoice"
+  >
+    按住说话
+  </button>
+</view>

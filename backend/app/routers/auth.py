@@ -3,12 +3,12 @@ from __future__ import annotations
 import sqlite3
 from datetime import timedelta
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
 
 from app.config import get_settings
-from app.deps import current_user, get_db
+from app.deps import bearer_token_from_authorization, current_user, get_db
 from app.errors import raise_api_error
-from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UserPublic
+from app.schemas import AuthResponse, AuthTokenResponse, LoginRequest, RegisterRequest, UserPublic
 from app.security import (
     generate_session_token,
     hash_invite_code,
@@ -58,8 +58,7 @@ def _create_session(db: sqlite3.Connection, user_id: int) -> str:
     return token
 
 
-@router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
+def _register_user(db: sqlite3.Connection, payload: RegisterRequest) -> tuple[UserPublic, str]:
     try:
         username = validate_username(payload.username)
         validate_password(payload.password)
@@ -114,12 +113,10 @@ def register(payload: RegisterRequest, response: Response, db: sqlite3.Connectio
         db.execute("ROLLBACK")
         raise_api_error(status.HTTP_500_INTERNAL_SERVER_ERROR, "register_failed", "注册失败")
 
-    _set_session_cookie(response, token)
-    return AuthResponse(user=UserPublic(id=user_id, username=username))
+    return UserPublic(id=user_id, username=username), token
 
 
-@router.post("/auth/login", response_model=AuthResponse)
-def login(payload: LoginRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
+def _login_user(db: sqlite3.Connection, payload: LoginRequest) -> tuple[UserPublic, str]:
     user = db.execute(
         """
         SELECT * FROM users
@@ -133,8 +130,33 @@ def login(payload: LoginRequest, response: Response, db: sqlite3.Connection = De
     token = _create_session(db, int(user["id"]))
     db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utcish_now_iso(), user["id"]))
     db.commit()
+    return UserPublic(id=user["id"], username=user["username"]), token
+
+
+@router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
+    user, token = _register_user(db, payload)
     _set_session_cookie(response, token)
-    return AuthResponse(user=UserPublic(id=user["id"], username=user["username"]))
+    return AuthResponse(user=user)
+
+
+@router.post("/auth/login", response_model=AuthResponse)
+def login(payload: LoginRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
+    user, token = _login_user(db, payload)
+    _set_session_cookie(response, token)
+    return AuthResponse(user=user)
+
+
+@router.post("/auth/token/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
+def register_for_token(payload: RegisterRequest, db: sqlite3.Connection = Depends(get_db)):
+    user, token = _register_user(db, payload)
+    return AuthTokenResponse(user=user, token=token)
+
+
+@router.post("/auth/token/login", response_model=AuthTokenResponse)
+def login_for_token(payload: LoginRequest, db: sqlite3.Connection = Depends(get_db)):
+    user, token = _login_user(db, payload)
+    return AuthTokenResponse(user=user, token=token)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -142,12 +164,19 @@ def logout(
     response: Response,
     db: sqlite3.Connection = Depends(get_db),
     session_token: str | None = Cookie(default=None, alias=get_settings().session_cookie_name),
+    authorization: str | None = Header(default=None),
 ):
     settings = get_settings()
-    if session_token:
+    bearer_token = bearer_token_from_authorization(authorization)
+    tokens = {token for token in (session_token, bearer_token) if token}
+    if tokens:
         db.execute(
-            "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
-            (utcish_now_iso(), hash_session_token(session_token)),
+            f"""
+            UPDATE sessions
+            SET revoked_at = ?
+            WHERE token_hash IN ({",".join("?" for _ in tokens)})
+            """,
+            (utcish_now_iso(), *(hash_session_token(token) for token in tokens)),
         )
         db.commit()
     response.delete_cookie(key=settings.session_cookie_name, path="/")

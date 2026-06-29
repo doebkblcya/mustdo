@@ -16,6 +16,8 @@ frontend/dist/
 frontend/node_modules/
 backend/logs/
 backend/run/
+miniprogram/project.private.config.json
+miniprogram/miniprogram_npm/
 downloads/
 eggs/
 .eggs/

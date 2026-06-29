@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/auth/auth",
+    "pages/todos/todos"
+  ],
+  "window": {
+    "navigationBarTitleText": "Todo Analyzer",
+    "navigationBarBackgroundColor": "#f7f8f8",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#ffffff"
+  },
+  "sitemapLocation": "sitemap.json"
+}

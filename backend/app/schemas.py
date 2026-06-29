@@ -30,6 +30,12 @@ class AuthResponse(BaseModel):
     user: UserPublic
 
 
+class AuthTokenResponse(BaseModel):
+    user: UserPublic
+    token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
 class TodoPublic(BaseModel):
     id: int
     content: str
