@@ -24,6 +24,8 @@ Page({
   recorder: null,
   socketTask: null,
   socketReady: false,
+  recorderStarted: false,
+  stopRequested: false,
   voiceEnded: false,
   voiceEndSent: false,
   voiceDone: false,
@@ -116,18 +118,36 @@ Page({
     if (this.recorder) return;
     this.recorder = wx.getRecorderManager();
 
+    this.recorder.onStart(() => {
+      console.log("recorder start");
+      this.recorderStarted = true;
+      if (this.stopRequested) {
+        setTimeout(() => this.stopRecorder(), 80);
+        return;
+      }
+      this.setData({
+        recording: true,
+        voiceMessage: this.socketReady ? "正在录音" : "正在准备语音服务",
+      });
+    });
+
     this.recorder.onFrameRecorded((event) => {
+      console.log("voice frame bytes", event.frameBuffer && event.frameBuffer.byteLength);
       if (event.frameBuffer) {
         this.sendOrQueueFrame(event.frameBuffer);
       }
     });
 
     this.recorder.onStop(() => {
+      console.log("recorder stop");
+      this.recorderStarted = false;
       this.voiceEnded = true;
       this.sendVoiceEndIfReady();
     });
 
     this.recorder.onError((error) => {
+      console.error("recorder error", error);
+      this.recorderStarted = false;
       this.failVoice(error.errMsg || "录音失败");
     });
   },
@@ -141,7 +161,7 @@ Page({
 
     this.resetVoiceState();
     this.setData({
-      recording: true,
+      recording: false,
       voiceMessage: "正在准备语音服务",
       transcript: "",
     });
@@ -154,29 +174,49 @@ Page({
     });
     this.bindVoiceSocket(this.socketTask);
 
-    this.recorder.start({
-      duration: 30000,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      encodeBitRate: 256000,
-      format: "PCM",
-      frameSize: 4,
-    });
+    try {
+      this.recorder.start({
+        duration: 30000,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        encodeBitRate: 256000,
+        format: "PCM",
+        frameSize: 4,
+      });
+    } catch (error) {
+      this.failVoice(error.errMsg || error.message || "录音启动失败");
+    }
   },
 
   stopVoice() {
-    if (!this.data.recording) return;
+    if (this.stopRequested || this.voiceDone) return;
+    this.stopRequested = true;
     this.setData({ recording: false, voiceMessage: "正在等待最终文本" });
     this.voiceEnded = true;
+    this.stopRecorder();
+    this.sendVoiceEndIfReady();
+  },
+
+  stopRecorder() {
+    if (!this.recorderStarted) {
+      console.log("recorder stop skipped: not started");
+      return;
+    }
     try {
       this.recorder.stop();
-    } catch (_error) {
-      this.sendVoiceEndIfReady();
+    } catch (error) {
+      console.warn("recorder stop failed", error);
+      this.recorderStarted = false;
     }
   },
 
   bindVoiceSocket(socketTask) {
+    socketTask.onOpen(() => {
+      console.log("voice socket open");
+    });
+
     socketTask.onMessage((event) => {
+      console.log("voice socket message", event.data);
       let message;
       try {
         message = JSON.parse(event.data);
@@ -215,11 +255,13 @@ Page({
       }
     });
 
-    socketTask.onError(() => {
+    socketTask.onError((error) => {
+      console.error("voice socket error", error);
       this.failVoice("语音连接失败");
     });
 
-    socketTask.onClose(() => {
+    socketTask.onClose((event) => {
+      console.log("voice socket close", event);
       if (this.data.voiceMessage && !this.voiceDone && !this.voiceEndSent) {
         this.failVoice("语音连接已断开");
       }
@@ -231,7 +273,10 @@ Page({
       this.pendingFrames.push(frameBuffer);
       return;
     }
-    this.socketTask.send({ data: frameBuffer });
+    this.socketTask.send({
+      data: frameBuffer,
+      fail: (error) => console.error("send frame failed", error),
+    });
   },
 
   flushVoiceFrames() {
@@ -244,7 +289,10 @@ Page({
     if (!this.voiceEnded || this.voiceEndSent || !this.socketReady || !this.socketTask) return;
     this.flushVoiceFrames();
     this.voiceEndSent = true;
-    this.socketTask.send({ data: JSON.stringify({ type: "end" }) });
+    this.socketTask.send({
+      data: JSON.stringify({ type: "end" }),
+      fail: (error) => console.error("send end failed", error),
+    });
   },
 
   async createTodosFromVoice(transcript) {
@@ -288,6 +336,8 @@ Page({
   resetVoiceState() {
     this.closeVoiceSocket();
     this.socketReady = false;
+    this.recorderStarted = false;
+    this.stopRequested = false;
     this.voiceEnded = false;
     this.voiceEndSent = false;
     this.voiceDone = false;
