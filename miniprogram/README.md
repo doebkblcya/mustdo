@@ -7,14 +7,14 @@
 后端地址在 `config.js`：
 
 ```js
-const API_BASE_URL = "https://doebkblcya.com";
+const API_BASE_URL = "https://mustdo.doebkblcya.com";
 ```
 
 微信公众平台后台需要配置：
 
 ```text
-request 合法域名：https://doebkblcya.com
-socket 合法域名：wss://doebkblcya.com
+request 合法域名：https://mustdo.doebkblcya.com
+socket 合法域名：wss://mustdo.doebkblcya.com
 ```
 
 ## 认证
@@ -34,6 +34,6 @@ Token 存在小程序本地 storage 中。后端仍复用 `sessions` 表，Web D
 - 登录 / 注册
 - 今天 / 明天 / 后续待办列表
 - 完成 / 修改 / 删除
-- 按住说话，走 `wss://doebkblcya.com/api/voice/stream`
+- 按住说话，走 `wss://mustdo.doebkblcya.com/api/voice/stream`
 
 小程序录音目前按 `16kHz/mono/PCM` 发送给后端。真机调试时如发现微信录音格式兼容问题，优先调整 `pages/todos/todos.js` 中 `recorder.start` 的录音参数。

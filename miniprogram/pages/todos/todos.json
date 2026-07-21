@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "mustdo"
+  "navigationBarTitleText": "mustdo",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
 }

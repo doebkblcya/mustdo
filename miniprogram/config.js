@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://doebkblcya.com";
+const API_BASE_URL = "https://mustdo.doebkblcya.com";
 
 function websocketBaseUrl() {
   if (API_BASE_URL.startsWith("https://")) {

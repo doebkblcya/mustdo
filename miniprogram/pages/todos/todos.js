@@ -21,6 +21,7 @@ Page({
     voiceMessage: "",
     transcript: "",
     editVisible: false,
+    editClosing: false,
     editTodoId: null,
     editContent: "",
     editDate: "",
@@ -51,6 +52,12 @@ Page({
 
   onUnload() {
     this.closeVoiceSocket();
+  },
+
+  onPullDownRefresh() {
+    this.loadTodos().finally(() => {
+      wx.stopPullDownRefresh();
+    });
   },
 
   async loadTodos() {
@@ -92,10 +99,28 @@ Page({
   async toggleTodo(event) {
     const id = Number(event.currentTarget.dataset.id);
     const currentStatus = event.currentTarget.dataset.status;
+    const newStatus = currentStatus === "done" ? "pending" : "done";
+
+    // Optimistic update — update items locally first
+    const items = this.data.items.map((item) =>
+      item.id === id ? { ...item, status: newStatus } : item
+    );
+    this.setData({ items });
+
+    // Also patch todos.groups to stay consistent
+    this.patchGroupItem(id, { status: newStatus });
+
+    wx.vibrateShort({ type: "light" });
+
     try {
-      await api.updateTodo(id, { status: currentStatus === "done" ? "pending" : "done" });
-      await this.loadTodos();
+      await api.updateTodo(id, { status: newStatus });
     } catch (error) {
+      // Revert on failure
+      const revertedItems = this.data.items.map((item) =>
+        item.id === id ? { ...item, status: currentStatus } : item
+      );
+      this.setData({ items: revertedItems });
+      this.patchGroupItem(id, { status: currentStatus });
       wx.showToast({ title: error.message || "操作失败", icon: "none" });
     }
   },
@@ -107,14 +132,35 @@ Page({
       content: "确定删除这条待办？",
       success: async (result) => {
         if (!result.confirm) return;
+
+        // Optimistic — remove from local arrays
+        const prevItems = this.data.items;
+        const prevTodos = this.data.todos;
+        this.setData({
+          items: prevItems.filter((item) => item.id !== id),
+          todos: this.removeFromGroups(prevTodos, id),
+        });
+
+        wx.vibrateShort({ type: "medium" });
+
         try {
           await api.deleteTodo(id);
-          await this.loadTodos();
         } catch (error) {
+          // Revert on failure
+          this.setData({ items: prevItems, todos: prevTodos });
           wx.showToast({ title: error.message || "删除失败", icon: "none" });
         }
       },
     });
+  },
+
+  removeFromGroups(todos, id) {
+    if (!todos || !todos.groups) return todos;
+    const groups = {};
+    for (const key of ["today", "tomorrow", "upcoming"]) {
+      groups[key] = (todos.groups[key] || []).filter((item) => item.id !== id);
+    }
+    return { ...todos, groups };
   },
 
   editTodo(event) {
@@ -124,8 +170,14 @@ Page({
       wx.showToast({ title: "待办不存在", icon: "none" });
       return;
     }
+    // Clear any pending close timeout to prevent race condition
+    if (this._editCloseTimer) {
+      clearTimeout(this._editCloseTimer);
+      this._editCloseTimer = null;
+    }
     this.setData({
       editVisible: true,
+      editClosing: false,
       editTodoId: todo.id,
       editContent: todo.content,
       editDate: todo.due_date,
@@ -138,6 +190,21 @@ Page({
   findTodo(id) {
     const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
     return [...(groups.today || []), ...(groups.tomorrow || []), ...(groups.upcoming || [])].find((item) => item.id === id);
+  },
+
+  patchGroupItem(id, patch) {
+    const todos = this.data.todos;
+    if (!todos || !todos.groups) return;
+    const groups = { ...todos.groups };
+    for (const key of ["today", "tomorrow", "upcoming"]) {
+      if (groups[key]) {
+        groups[key] = groups[key].map((item) =>
+          item.id === id ? { ...item, ...patch } : item
+        );
+      }
+    }
+    // Use silent data update — no setData needed since items already reflect the change
+    this.data.todos = { ...todos, groups };
   },
 
   onEditContentInput(event) {
@@ -158,7 +225,12 @@ Page({
 
   cancelEdit() {
     if (this.data.editSubmitting) return;
-    this.setData({ editVisible: false, editTodoId: null, error: "" });
+    // Trigger closing animation, then remove from DOM
+    this.setData({ editClosing: true });
+    this._editCloseTimer = setTimeout(() => {
+      this._editCloseTimer = null;
+      this.setData({ editVisible: false, editClosing: false, editTodoId: null, error: "" });
+    }, 280);
   },
 
   noop() {},
@@ -172,16 +244,46 @@ Page({
     }
     this.setData({ editSubmitting: true });
     try {
-      await api.updateTodo(this.data.editTodoId, {
+      const patch = {
         content,
         due_date: this.data.editDate,
         due_time: this.data.editUseTime ? this.data.editTime : null,
+      };
+      await api.updateTodo(this.data.editTodoId, patch);
+
+      // Update local data instead of full reload
+      const todos = this.data.todos;
+      if (todos && todos.groups) {
+        for (const key of ["today", "tomorrow", "upcoming"]) {
+          if (todos.groups[key]) {
+            todos.groups[key] = todos.groups[key].map((item) =>
+              item.id === this.data.editTodoId ? { ...item, ...patch } : item
+            );
+          }
+        }
+      }
+
+      // Re-derive items for current view
+      const items = ((todos && todos.groups && todos.groups[this.data.activeView]) || []).map((item) => ({
+        ...item,
+        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+      }));
+
+      this.setData({
+        editClosing: true,
+        editSubmitting: false,
+        todos,
+        items,
       });
-      this.setData({ editVisible: false, editTodoId: null });
-      await this.loadTodos();
+
+      wx.vibrateShort({ type: "light" });
+
+      this._editCloseTimer = setTimeout(() => {
+        this._editCloseTimer = null;
+        this.setData({ editVisible: false, editClosing: false, editTodoId: null });
+      }, 280);
     } catch (error) {
       wx.showToast({ title: error.message || "保存失败", icon: "none" });
-    } finally {
       this.setData({ editSubmitting: false });
     }
   },

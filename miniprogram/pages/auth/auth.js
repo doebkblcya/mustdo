@@ -8,6 +8,7 @@ Page({
     inviteCode: "",
     error: "",
     submitting: false,
+    passwordVisible: false,
   },
 
   onLoad() {
@@ -22,6 +23,10 @@ Page({
 
   switchToRegister() {
     this.setData({ mode: "register", error: "" });
+  },
+
+  togglePasswordVisible() {
+    this.setData({ passwordVisible: !this.data.passwordVisible });
   },
 
   onUsernameInput(event) {

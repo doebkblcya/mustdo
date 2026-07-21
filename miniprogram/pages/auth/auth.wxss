@@ -59,6 +59,30 @@
   margin-bottom: 18rpx;
 }
 
+.password-field {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.password-input {
+  flex: 1;
+  height: 84rpx;
+  padding: 0 24rpx;
+  font-size: 30rpx;
+  color: #182820;
+}
+
+.password-toggle {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34rpx;
+  flex: 0 0 72rpx;
+}
+
 .error-text {
   display: block;
   min-height: 42rpx;
