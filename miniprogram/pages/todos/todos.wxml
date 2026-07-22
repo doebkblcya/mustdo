@@ -1,31 +1,40 @@
 <view class="todos-page page">
   <view class="app-header">
     <view>
-      <text class="brand">mustdo</text>
-      <text class="user">{{user ? user.username : ''}}</text>
+      <text class="wordmark">mustdo</text>
+      <text class="greeting">{{user ? user.username : ''}}</text>
     </view>
     <button class="logout-button" bindtap="logout">退出</button>
   </view>
 
   <view class="summary">
     <text class="summary-title">{{viewTitle}}</text>
-    <text class="summary-date">{{viewDate}}</text>
-    <text class="summary-count">{{items.length}} 项</text>
+    <view class="summary-meta">
+      <text class="summary-date">{{viewDate}}</text>
+      <text class="summary-count">{{items.length}} 项</text>
+    </view>
   </view>
 
   <view class="tabs">
-    <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">今天</button>
-    <button class="tab {{activeView === 'tomorrow' ? 'active' : ''}}" data-view="tomorrow" bindtap="switchView">明天</button>
-    <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">后续</button>
+    <view class="tab-pill" style="width: {{pillWidth}}px; transform: translateX({{pillX}}px);"></view>
+    <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">
+      <text class="tab-label">今天</text>
+    </button>
+    <button class="tab {{activeView === 'tomorrow' ? 'active' : ''}}" data-view="tomorrow" bindtap="switchView">
+      <text class="tab-label">明天</text>
+    </button>
+    <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">
+      <text class="tab-label">后续</text>
+    </button>
   </view>
 
   <view class="todo-list">
     <!-- Skeleton loading -->
     <block wx:if="{{loading}}">
       <view wx:for="{{[1,2,3,4]}}" wx:key="*this" class="skeleton-card">
-        <view class="skeleton-line" style="width:52rpx;height:52rpx;border-radius:50%;flex:0 0 52rpx;margin-right:18rpx;"></view>
-        <view style="flex:1;">
-          <view class="skeleton-line" style="width:70%;margin-bottom:14rpx;"></view>
+        <view class="skeleton-line" style="width:52rpx;height:52rpx;border-radius:50%;flex:0 0 52rpx;"></view>
+        <view style="flex:1;display:flex;flex-direction:column;gap:14rpx;">
+          <view class="skeleton-line" style="width:70%;"></view>
           <view class="skeleton-line" style="width:44%;"></view>
         </view>
       </view>
@@ -48,8 +57,28 @@
 
     <!-- Todo items -->
     <block wx:else>
-      <view wx:for="{{items}}" wx:key="id" class="todo-item {{item.status === 'done' ? 'done' : ''}}">
-        <button class="check-button" data-id="{{item.id}}" data-status="{{item.status}}" bindtap="toggleTodo">
+      <view
+        wx:for="{{items}}"
+        wx:key="id"
+        class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.deleting ? 'deleting' : ''}}"
+        style="transform: translateX({{item.swipeX || 0}}rpx);"
+        bindtouchstart="onItemTouchStart"
+        bindtouchmove="onItemTouchMove"
+        bindtouchend="onItemTouchEnd"
+        data-index="{{index}}"
+        data-id="{{item.id}}"
+      >
+        <view class="delete-action" style="opacity: {{item.swipeX ? (-item.swipeX / 120) : 0}};">
+          <text>删除</text>
+        </view>
+        <button
+          class="check-button"
+          style="transform: scale({{item.checkScale || 1}});"
+          data-id="{{item.id}}"
+          data-status="{{item.status}}"
+          data-index="{{index}}"
+          bindtap="toggleTodo"
+        >
           {{item.status === 'done' ? '✓' : ''}}
         </button>
         <view class="todo-content">
@@ -65,7 +94,7 @@
   </view>
 
   <!-- Voice status panel -->
-  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel">
+  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel" style="transform: translateY({{voicePanelY || 16}}rpx); opacity: {{voicePanelOpacity || 0}};">
     <text class="voice-title">{{voiceMessage}}</text>
     <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
   </view>
@@ -73,6 +102,7 @@
   <!-- Hold-to-talk button -->
   <button
     class="voice-button {{recording ? 'recording' : ''}}"
+    style="transform: scale({{voiceButtonScale || 1}});"
     catchtouchstart="startVoice"
     catchtouchend="stopVoice"
     catchtouchcancel="stopVoice"
@@ -81,8 +111,27 @@
   </button>
 
   <!-- Edit bottom sheet -->
-  <view wx:if="{{editVisible || editClosing}}" class="sheet-mask {{editClosing ? 'sheet-closing' : ''}}" catchtap="cancelEdit">
-    <view class="edit-sheet {{editClosing ? 'sheet-closing' : ''}}" catchtap="noop">
+  <view
+    wx:if="{{editVisible}}"
+    class="sheet-mask"
+    style="opacity: {{maskOpacity}};"
+    catchtap="cancelEdit"
+    catchtouchmove="noop"
+  >
+    <view
+      class="edit-sheet"
+      style="transform: translateY({{sheetTranslateY}}px);"
+    >
+      <!-- Drag handle -->
+      <view
+        class="sheet-handle-area"
+        catchtouchstart="onSheetTouchStart"
+        catchtouchmove="onSheetTouchMove"
+        catchtouchend="onSheetTouchEnd"
+      >
+        <view class="sheet-handle"></view>
+      </view>
+
       <view class="sheet-head">
         <text class="sheet-title">修改待办</text>
         <button class="sheet-close" bindtap="cancelEdit">×</button>
@@ -92,6 +141,7 @@
         class="field edit-field"
         value="{{editContent}}"
         placeholder="待办内容"
+        placeholder-class="edit-placeholder"
         confirm-type="done"
         bindinput="onEditContentInput"
       />
@@ -105,7 +155,7 @@
 
       <view class="edit-row">
         <text class="edit-label">时间</text>
-        <switch checked="{{editUseTime}}" color="#17664a" bindchange="onEditUseTimeChange" />
+        <switch checked="{{editUseTime}}" color="#1d1d1f" bindchange="onEditUseTimeChange" />
       </view>
 
       <picker wx:if="{{editUseTime}}" mode="time" value="{{editTime}}" bindchange="onEditTimeChange">
