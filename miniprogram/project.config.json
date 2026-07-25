@@ -1,7 +1,7 @@
 {
   "appid": "wxcfaa39fb0d7227aa",
   "compileType": "miniprogram",
-  "libVersion": "latest",
+  "libVersion": "3.15.2",
   "projectname": "mustdo-miniprogram",
   "setting": {
     "urlCheck": true,

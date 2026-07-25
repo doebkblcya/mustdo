@@ -100,7 +100,7 @@ def _register_user(db: sqlite3.Connection, payload: RegisterRequest) -> tuple[Us
         db.execute(
             """
             UPDATE invite_codes
-            SET status = 'redeemed', used_at = ?, used_by_user_id = ?
+            SET used_at = ?, used_by_user_id = ?
             WHERE id = ?
             """,
             (now, user_id, invite["id"]),
