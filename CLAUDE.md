@@ -6,7 +6,6 @@
 
 - **后端**：FastAPI + SQLite，活跃开发中
 - **小程序**：微信原生小程序，`miniprogram/`，活跃开发中，复用后端 API
-- **前端 Web**：`frontend/`（Vite + React + TypeScript），**已废弃，不再更新**
 - **当前分支**：`main`
 
 详细产品文档见 `docs/PROJECT.md`，本文档侧重代码实现细节和约定。
@@ -27,7 +26,7 @@ Todo Analyzer — 轻量语音待办工具。语音只做"新增待办"，修改
 mustdo/
 ├── backend/                  # FastAPI + SQLite（主力）
 │   ├── app/
-│   │   ├── main.py           # 应用入口、CORS、静态文件托管、lifecycle
+│   │   ├── main.py           # 应用入口、lifecycle
 │   │   ├── config.py         # Settings dataclass，读取 .env
 │   │   ├── db.py             # SQLite 连接 + schema 初始化
 │   │   ├── deps.py           # FastAPI 依赖：get_db、current_user
@@ -55,15 +54,6 @@ mustdo/
 │       ├── test_errors.py
 │       ├── test_todos_api.py
 │       └── test_voice.py
-├── frontend/                 # 【已废弃】Vite + React + TypeScript
-│   └── src/
-│       ├── App.tsx           # 页面级状态编排
-│       ├── api/client.ts     # API client + 错误处理
-│       ├── auth/AuthPage.tsx
-│       ├── todos/TodoDashboard.tsx, TodoItem.tsx, types.ts
-│       ├── voice/VoiceButton.tsx, VoiceOverlay.tsx, useVoiceRecorder.ts, audio.ts, types.ts
-│       ├── utils/date.ts
-│       └── styles.css        # Liquid glass UI
 ├── miniprogram/              # 微信小程序（原生框架）
 │   ├── app.js, app.json, app.wxss
 │   ├── config.js             # 后端 API 地址
@@ -79,8 +69,7 @@ mustdo/
 
 - **FastAPI**（同步路由，非 async handler 除非必要）
 - **SQLite**（WAL 模式，`check_same_thread=False`）
-- **httpx**（DeepSeek HTTP 调用）
-- **websockets**（讯飞 ASR WebSocket）
+- **httpx**（火山 ASR + DeepSeek HTTP 调用）
 - **Pydantic v2**（请求校验和 JSON 解析）
 - **uv**（包管理）
 
@@ -117,12 +106,11 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 
 ### 认证体系
 
-**双模式认证**：
+**认证模式**：Bearer Token
 
-| 模式 | Cookie 来源 | 用途 |
-|------|------------|------|
-| Cookie Session | `HttpOnly` cookie（`todo_session`） | Web 端 |
-| Bearer Token | `Authorization: Bearer <token>` header | 小程序、API 客户端 |
+| 来源 | 用途 |
+|------|------|
+| `Authorization: Bearer <token>` header | 小程序、API 客户端 |
 
 **注册流程**：
 1. 需要 `username` + `password` + `invite_code`
@@ -132,8 +120,7 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 
 **登录态**：
 - token 存 hash（`hmac-sha256` with `SECRET_KEY`）
-- `current_user` 依赖注入：Cookie → Bearer → 401
-- WebSocket 认证：从 cookie 或 header 提取 token
+- `current_user` 依赖注入：从 `Authorization` header 提取 Bearer token → 查 sessions 表
 
 ### 错误模型（统一格式）
 
@@ -146,7 +133,6 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 - `message`：可直接展示的中文文案
 - `details`：参数校验的结构化信息；无则为 `null`
 - FastAPI 参数校验错误统一返回 `code=validation_error`，status=422
-- WebSocket 语音流错误事件：`{type: "error", error: "..."}`
 
 已定义的错误码：`bad_request`, `unauthorized`, `not_found`, `conflict`, `unsupported_media_type`, `validation_error`, `internal_error`, `upstream_error`, `invalid_account_input`, `invalid_invite_code`, `username_exists`, `invalid_credentials`, `todo_not_found`, `content_required`, `due_date_required`, `recording_too_short`, `recording_too_long`, `audio_empty`, `audio_transcode_failed`, `speech_recognition_failed`, `todo_parse_unavailable`, `todo_save_failed`
 
@@ -154,17 +140,14 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/auth/register` | Cookie 注册 |
-| POST | `/api/auth/login` | Cookie 登录 |
-| POST | `/api/auth/token/register` | Bearer Token 注册（小程序用） |
-| POST | `/api/auth/token/login` | Bearer Token 登录（小程序用） |
-| POST | `/api/auth/logout` | 登出（双模式） |
+| POST | `/api/auth/token/register` | Bearer Token 注册 |
+| POST | `/api/auth/token/login` | Bearer Token 登录 |
+| POST | `/api/auth/logout` | 登出 |
 | GET | `/api/me` | 当前用户 |
 | GET | `/api/todos` | 获取分组待办（today/tomorrow/upcoming） |
 | PATCH | `/api/todos/{id}` | 编辑待办 |
 | DELETE | `/api/todos/{id}` | 软删除待办 |
-| WS | `/api/voice/stream` | 流式上传 PCM，返回实时/最终转写文本 |
-| POST | `/api/voice/transcriptions` | 上传音频文件转写（兼容入口） |
+| POST | `/api/voice/transcriptions` | 上传音频文件 → 火山引擎转写 |
 | POST | `/api/todos/ai` | 转写文本 → AI 解析 → 新增待办 |
 | GET | `/api/health` | 健康检查 |
 
@@ -267,7 +250,7 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 - 运行：`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v`
 - 编译检查：`python -m compileall backend/app backend/scripts backend/tests`
 - 测试用临时 SQLite 文件 + `patch.dict(os.environ)` 注入配置
-- 外部依赖（讯飞、DeepSeek）用 mock/fake 替代
+- 外部依赖（火山 ASR、DeepSeek）用 mock/fake 替代
 - 测试后清理：`tmpdir.cleanup()` + `get_settings.cache_clear()`
 
 ## 小程序（活跃维护）
@@ -275,18 +258,8 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
 - 原生微信小程序框架
 - Bearer Token 认证，调用 `/api/auth/token/register` 和 `/api/auth/token/login`
 - 后续请求带 `Authorization: Bearer <token>`
-- 语音通过 `wx.getRecorderManager` 采集 PCM，`wx.connectSocket` 发送
-- 微信后台需配置 request 和 socket 合法域名
-
-## 前端 Web（已废弃）
-
-- Vite + React + TypeScript，liquid glass UI 风格
-- Web Audio API 录音（`ScriptProcessorNode`，已废弃 API）
-- WebSocket 流式上传 PCM 到后端
-- `App.tsx` 负责页面级状态，`useVoiceRecorder` hook 管理录音全生命周期
-- API 代理：Vite dev server 代理 `/api` 到后端
-- 生产构建：FastAPI 托管 `frontend/dist`（`FRONTEND_DIST_DIR` 存在时自动启用）
-- **不再接受新功能开发**
+- 语音通过 `wx.getRecorderManager` 采集 16kHz/mono/PCM，松手后 `wx.uploadFile` 一次性上传
+- 微信后台只需配置 request 合法域名
 
 ## 已知限制
 
@@ -309,7 +282,7 @@ idx_sessions_token_hash, idx_todos_user_due_date, idx_todos_user_deleted
    - 新增 `services/asr.py`（~100 行）
    - 消除 EOS 等待（~1.5s 尾部延迟）
    - 小程序录音改为纯本地 + 松手后 HTTP 上传
-
-已知待处理：
-- `ScriptProcessorNode` → `AudioWorkletNode`（前端，但已废弃所以优先级低）
-- CSS `backdrop-filter: blur(40px)` GPU 开销（前端，已废弃所以优先级低）
+7. **清理废弃前端**：删除 `frontend/` 目录（~4100 行）
+   - 删除 Cookie Session 认证体系
+   - 删除 CORS 中间件
+   - 认证简化为纯 Bearer Token

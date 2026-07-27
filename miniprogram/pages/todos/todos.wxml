@@ -120,6 +120,7 @@
   <button
     class="voice-button {{voicePhase === 'recording' ? 'recording' : ''}} {{voiceCancelHover ? 'cancel' : ''}}"
     style="transform: scale({{voiceButtonScale || 1}});"
+    bindtap="onVoiceButtonTap"
     catchtouchstart="startVoice"
     catchtouchmove="onVoiceButtonMove"
     catchtouchend="stopVoice"

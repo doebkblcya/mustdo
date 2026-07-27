@@ -72,6 +72,7 @@ Page({
   // ---- Voice ----
   recorder: null,
   recorderStarted: false,
+  _voicePermissionPending: false,
   _voiceTouchStartY: 0,
 
   // ---- Other ----
@@ -717,12 +718,24 @@ Page({
       return;
     }
 
-    // Capture touch position immediately
+    // ── Permission first (system dialog would steal touchend) ──
+    this._voicePermissionPending = true;
+    try {
+      await this.ensureRecordPermission();
+    } catch (_error) {
+      this._voicePermissionPending = false;
+      this.failVoice("请先授权麦克风");
+      return;
+    }
+    // stopVoice may have fired during await — abort if cancelled
+    if (!this._voicePermissionPending) return;
+    this._voicePermissionPending = false;
+
+    // Capture touch position
     const touch = (event && event.touches && event.touches[0]) ? event.touches[0] : null;
     this._voiceTouchStartY = touch ? touch.clientY : 0;
 
-    // ── Instant visual feedback ── BEFORE any async operation
-    this.resetVoiceState();
+    // ── Visual feedback ──
     this.setData({
       voicePhase: "recording",
       voiceCancelHover: false,
@@ -732,14 +745,6 @@ Page({
     this._animateVoiceButton(0.97);
     this._animateVoicePanel(true);
     wx.vibrateShort({ type: "heavy" });
-
-    // ── Async: permission (may have been granted before, near-instant) ──
-    try {
-      await this.ensureRecordPermission();
-    } catch (_error) {
-      this.failVoice("请先授权麦克风");
-      return;
-    }
 
     // ── Start local recording ──
     try {
@@ -768,7 +773,22 @@ Page({
     }
   },
 
+  onVoiceButtonTap() {
+    // Fallback: when system permission dialog steals touchend,
+    // a tap on the recording button acts as stop
+    if (this.data.voicePhase === "recording") {
+      this.stopVoice();
+    }
+  },
+
   stopVoice() {
+    // Permission check still pending — cancel it, startVoice will abort
+    if (this._voicePermissionPending) {
+      this._voicePermissionPending = false;
+      this.setData({ voicePhase: "idle", voiceCancelHover: false });
+      return;
+    }
+
     if (this.data.voicePhase !== "recording") return;
 
     const cancelled = this.data.voiceCancelHover;

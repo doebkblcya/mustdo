@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 from app.deps import current_user, get_db
 from app.errors import raise_api_error
 from app.schemas import AiCreateRequest, AiCreateResponse, TranscriptionResponse
-from app.services.asr import VolcAsrError, recognize_pcm
+from app.services.asr import VolcAsrError, VolcSilentAudioError, recognize_pcm
 from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm
 from app.services.deepseek import DeepSeekParseError, NoTodoParsedError, parse_todos_with_deepseek
 from app.services.todos import create_todos
@@ -33,6 +33,19 @@ async def create_transcription(
     pcm = await read_upload_as_pcm(file)
     try:
         transcript = await recognize_pcm(pcm)
+    except VolcSilentAudioError:
+        # Sample first 64 bytes to diagnose silent audio (e.g. DevTools all-zeros)
+        pcm_sample = pcm[:64].hex()
+        pcm_zero = all(b == 0 for b in pcm[:1024])
+        logger.info(
+            "voice_transcription_silent elapsed_ms=%s audio_seconds=%.3f "
+            "pcm_all_zero_first_1k=%s pcm_first_64_hex=%s",
+            _elapsed_ms(started_at),
+            len(pcm) / PCM_BYTES_PER_SECOND,
+            pcm_zero,
+            pcm_sample,
+        )
+        return TranscriptionResponse(transcript="")
     except VolcAsrError as exc:
         logger.warning(
             "voice_transcription_failed elapsed_ms=%s error=%s",

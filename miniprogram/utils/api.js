@@ -97,10 +97,6 @@ function logout() {
   });
 }
 
-function getMe() {
-  return request("/api/me");
-}
-
 function listTodos() {
   return request("/api/todos");
 }
@@ -258,7 +254,6 @@ module.exports = {
   login: login,
   register: register,
   logout: logout,
-  getMe: getMe,
   listTodos: listTodos,
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,

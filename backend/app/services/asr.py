@@ -62,6 +62,10 @@ class VolcAsrError(RuntimeError):
     """火山引擎 ASR 识别失败。"""
 
 
+class VolcSilentAudioError(VolcAsrError):
+    """火山引擎检测到静音/空音频。"""
+
+
 async def recognize_pcm(pcm: bytes) -> str:
     """将 PCM 音频发送到火山引擎录音文件极速版识别，返回识别文本。
 
@@ -122,7 +126,7 @@ async def recognize_pcm(pcm: bytes) -> str:
             response.text[:500],
         )
         if status_code == "20000003":
-            raise VolcAsrError("火山引擎检测到静音音频")
+            raise VolcSilentAudioError("火山引擎检测到静音音频")
         raise VolcAsrError(f"火山引擎识别失败(code={status_code})")
 
     try:
