@@ -2,7 +2,6 @@
   <!-- Hero -->
   <view class="auth-hero">
     <text class="auth-wordmark">mustdo</text>
-    <text class="auth-subtitle">{{mode === 'register' ? '创建账号，开始规划' : '欢迎回来'}}</text>
   </view>
 
   <!-- Segmented control -->

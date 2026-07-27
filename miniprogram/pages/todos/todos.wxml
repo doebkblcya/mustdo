@@ -1,21 +1,18 @@
 <view class="todos-page page">
-  <view class="app-header">
-    <view>
-      <text class="wordmark">mustdo</text>
-      <text class="greeting">{{user ? user.username : ''}}</text>
-    </view>
-    <button class="logout-button" bindtap="logout">退出</button>
-  </view>
-
-  <view class="summary">
-    <text class="summary-title">{{viewTitle}}</text>
-    <view class="summary-meta">
-      <text class="summary-date">{{viewDate}}</text>
-      <text class="summary-count">{{items.length}} 项</text>
+  <!-- Section 1: Header -->
+  <view class="section-card section-header">
+    <view class="app-header">
+      <view>
+        <text class="wordmark">mustdo</text>
+        <text class="greeting">{{user ? user.username : ''}}</text>
+      </view>
+      <button class="logout-button" bindtap="logout">退出</button>
     </view>
   </view>
 
-  <view class="tabs">
+  <!-- Section 2: Content -->
+  <view class="section-card section-body">
+    <view class="tabs">
     <view class="tab-pill" style="width: {{pillWidth}}px; transform: translateX({{pillX}}px);"></view>
     <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">
       <text class="tab-label">今天</text>
@@ -50,9 +47,7 @@
 
     <!-- Empty state -->
     <view wx:elif="{{items.length === 0}}" class="empty-state">
-      <text class="empty-icon">{{activeView === 'today' ? '☀️' : activeView === 'tomorrow' ? '📅' : '📋'}}</text>
-      <text class="empty-title">暂无待办</text>
-      <text class="empty-desc">{{activeView === 'today' ? '今天还没有待办事项，放松一下' : activeView === 'tomorrow' ? '明天还没有计划，提前安排？' : '后续没有待办，一切尽在掌握'}}</text>
+      <view class="empty-line"></view>
     </view>
 
     <!-- Todo items -->
@@ -69,7 +64,7 @@
         data-id="{{item.id}}"
       >
         <view class="delete-action" style="opacity: {{item.swipeX ? (-item.swipeX / 120) : 0}};">
-          <text>删除</text>
+          <view class="delete-action-icon"></view>
         </view>
         <button
           class="check-button"
@@ -86,24 +81,16 @@
           <text class="todo-meta">{{item.meta}}</text>
         </view>
         <view class="todo-actions">
-          <button class="action-button" data-id="{{item.id}}" bindtap="editTodo">改</button>
-          <button class="action-button danger" data-id="{{item.id}}" bindtap="deleteTodo">删</button>
+          <button class="action-button" data-id="{{item.id}}" bindtap="editTodo">
+            <view class="action-icon action-icon--edit"></view>
+          </button>
+          <button class="action-button danger" data-id="{{item.id}}" bindtap="deleteTodo">
+            <view class="action-icon action-icon--delete"></view>
+          </button>
         </view>
       </view>
     </block>
   </view>
-
-  <!-- Voice recording panel — shown during recording -->
-  <view wx:if="{{voicePhase === 'recording'}}" class="voice-panel" style="opacity: {{voicePanelOpacity}};">
-    <view class="voice-wave">
-      <view wx:for="{{[1,2,3,4,5]}}" wx:key="*this" class="wave-bar {{voicePhase === 'recording' ? 'active' : ''}}" style="animation-delay: {{item * 0.08}}s;"></view>
-    </view>
-    <text class="voice-title">{{voiceCancelHover ? '松开取消' : '正在聆听…'}}</text>
-    <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
-    <view class="voice-cancel-zone {{voiceCancelHover ? 'active' : ''}}">
-      <view class="cancel-icon">✕</view>
-      <text>松开取消</text>
-    </view>
   </view>
 
   <!-- Parsing / Result overlay -->
@@ -126,7 +113,7 @@
     catchtouchend="stopVoice"
     catchtouchcancel="stopVoice"
   >
-    {{voicePhase === 'recording' ? '松开完成' : '按住说话'}}
+    {{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成') : '按住说话'}}
   </button>
 
   <!-- Edit bottom sheet -->
@@ -153,7 +140,9 @@
 
       <view class="sheet-head">
         <text class="sheet-title">修改待办</text>
-        <button class="sheet-close" bindtap="cancelEdit">×</button>
+        <button class="sheet-close" bindtap="cancelEdit">
+          <view class="sheet-close-icon"></view>
+        </button>
       </view>
 
       <input

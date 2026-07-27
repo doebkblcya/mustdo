@@ -106,7 +106,6 @@ Page({
   },
 
   togglePasswordVisible() {
-    wx.vibrateShort({ type: "light" });
     this.setData({ passwordVisible: !this.data.passwordVisible });
   },
 
