@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 
 from fastapi import HTTPException
-from starlette.responses import Response
 
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -80,7 +79,7 @@ class BearerAuthTests(unittest.TestCase):
         db = get_connection()
         try:
             token = login_for_token(LoginRequest(username="tester", password="password123"), db=db).token
-            user = current_user(db=db, session_token=None, authorization=f"Bearer {token}")
+            user = current_user(db=db, authorization=f"Bearer {token}")
         finally:
             db.close()
 
@@ -91,9 +90,9 @@ class BearerAuthTests(unittest.TestCase):
         db = get_connection()
         try:
             token = login_for_token(LoginRequest(username="tester", password="password123"), db=db).token
-            logout(Response(), db=db, session_token=None, authorization=f"Bearer {token}")
+            logout(db=db, authorization=f"Bearer {token}")
             with self.assertRaises(HTTPException) as raised:
-                current_user(db=db, session_token=None, authorization=f"Bearer {token}")
+                current_user(db=db, authorization=f"Bearer {token}")
         finally:
             db.close()
 

@@ -3,9 +3,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 
-from fastapi import Cookie, Depends, Header, status
+from fastapi import Depends, Header, status
 
-from app.config import get_settings
 from app.db import get_connection
 from app.errors import raise_api_error
 from app.security import hash_session_token
@@ -50,11 +49,10 @@ def user_from_session_token(db: sqlite3.Connection, session_token: str | None) -
 
 def current_user(
     db: sqlite3.Connection = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias=get_settings().session_cookie_name),
     authorization: str | None = Header(default=None),
 ) -> sqlite3.Row:
-    bearer_token = bearer_token_from_authorization(authorization)
-    row = user_from_session_token(db, bearer_token or session_token)
+    token = bearer_token_from_authorization(authorization)
+    row = user_from_session_token(db, token)
     if row is None:
         raise_api_error(status.HTTP_401_UNAUTHORIZED, "unauthorized", "请先登录")
     return row

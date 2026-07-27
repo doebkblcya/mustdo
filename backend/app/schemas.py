@@ -26,10 +26,6 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=128)
 
 
-class AuthResponse(BaseModel):
-    user: UserPublic
-
-
 class AuthTokenResponse(BaseModel):
     user: UserPublic
     token: str

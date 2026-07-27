@@ -3,12 +3,12 @@ from __future__ import annotations
 import sqlite3
 from datetime import timedelta
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 
 from app.config import get_settings
 from app.deps import bearer_token_from_authorization, current_user, get_db
 from app.errors import raise_api_error
-from app.schemas import AuthResponse, AuthTokenResponse, LoginRequest, RegisterRequest, UserPublic
+from app.schemas import AuthTokenResponse, LoginRequest, RegisterRequest, UserPublic
 from app.security import (
     generate_session_token,
     hash_invite_code,
@@ -23,19 +23,6 @@ from app.time_utils import now_shanghai, utcish_now_iso
 
 
 router = APIRouter(prefix="/api", tags=["auth"])
-
-
-def _set_session_cookie(response: Response, token: str) -> None:
-    settings = get_settings()
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=token,
-        max_age=settings.session_days * 24 * 60 * 60,
-        httponly=True,
-        secure=settings.session_cookie_secure,
-        samesite=settings.session_cookie_samesite,
-        path="/",
-    )
 
 
 def _create_session(db: sqlite3.Connection, user_id: int) -> str:
@@ -133,20 +120,6 @@ def _login_user(db: sqlite3.Connection, payload: LoginRequest) -> tuple[UserPubl
     return UserPublic(id=user["id"], username=user["username"]), token
 
 
-@router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
-    user, token = _register_user(db, payload)
-    _set_session_cookie(response, token)
-    return AuthResponse(user=user)
-
-
-@router.post("/auth/login", response_model=AuthResponse)
-def login(payload: LoginRequest, response: Response, db: sqlite3.Connection = Depends(get_db)):
-    user, token = _login_user(db, payload)
-    _set_session_cookie(response, token)
-    return AuthResponse(user=user)
-
-
 @router.post("/auth/token/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
 def register_for_token(payload: RegisterRequest, db: sqlite3.Connection = Depends(get_db)):
     user, token = _register_user(db, payload)
@@ -161,25 +134,16 @@ def login_for_token(payload: LoginRequest, db: sqlite3.Connection = Depends(get_
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
-    response: Response,
     db: sqlite3.Connection = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias=get_settings().session_cookie_name),
     authorization: str | None = Header(default=None),
 ):
-    settings = get_settings()
-    bearer_token = bearer_token_from_authorization(authorization)
-    tokens = {token for token in (session_token, bearer_token) if token}
-    if tokens:
+    token = bearer_token_from_authorization(authorization)
+    if token:
         db.execute(
-            f"""
-            UPDATE sessions
-            SET revoked_at = ?
-            WHERE token_hash IN ({",".join("?" for _ in tokens)})
-            """,
-            (utcish_now_iso(), *(hash_session_token(token) for token in tokens)),
+            "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
+            (utcish_now_iso(), hash_session_token(token)),
         )
         db.commit()
-    response.delete_cookie(key=settings.session_cookie_name, path="/")
 
 
 @router.get("/me", response_model=UserPublic)
