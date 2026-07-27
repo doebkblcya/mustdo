@@ -109,7 +109,7 @@ def _register_user(db: sqlite3.Connection, payload: RegisterRequest) -> tuple[Us
         db.execute("COMMIT")
     except HTTPException:
         raise
-    except sqlite3.Error as exc:
+    except sqlite3.Error:
         db.execute("ROLLBACK")
         raise_api_error(status.HTTP_500_INTERNAL_SERVER_ERROR, "register_failed", "注册失败")
 

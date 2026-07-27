@@ -1,21 +1,12 @@
 var config = require("../config");
 
 var API_BASE_URL = config.API_BASE_URL;
-var WS_BASE_URL = config.WS_BASE_URL;
 
 var TOKEN_KEY = "todo_analyzer_token";
 var USER_KEY = "todo_analyzer_user";
 
-function trimSlash(value) {
-  return value.replace(/\/$/, "");
-}
-
 function apiUrl(path) {
-  return trimSlash(API_BASE_URL) + path;
-}
-
-function voiceStreamUrl() {
-  return trimSlash(WS_BASE_URL) + "/api/voice/stream";
+  return API_BASE_URL.replace(/\/$/, "") + path;
 }
 
 function getToken() {
@@ -126,6 +117,39 @@ function createTodosFromTranscript(transcript) {
   return request("/api/todos/ai", { method: "POST", data: { transcript: transcript } });
 }
 
+function uploadVoice(filePath) {
+  var token = getToken();
+  return new Promise(function(resolve, reject) {
+    wx.uploadFile({
+      url: apiUrl("/api/voice/transcriptions"),
+      filePath: filePath,
+      name: "file",
+      header: {
+        Authorization: "Bearer " + token,
+      },
+      success: function(res) {
+        var statusCode = res.statusCode || 0;
+        if (statusCode >= 200 && statusCode < 300) {
+          try {
+            resolve(JSON.parse(res.data));
+          } catch (_e) {
+            reject(new Error("语音服务返回格式异常"));
+          }
+          return;
+        }
+        try {
+          reject(apiError(JSON.parse(res.data), statusCode));
+        } catch (_e) {
+          reject(new Error("请求失败：" + statusCode));
+        }
+      },
+      fail: function(err) {
+        reject(new Error(err.errMsg || "上传失败"));
+      },
+    });
+  });
+}
+
 // ============================================================
 // Spring physics engine (Apple Design Fluid Interfaces)
 // ============================================================
@@ -228,7 +252,6 @@ function spring(target, options) {
 module.exports = {
   // API
   apiUrl: apiUrl,
-  voiceStreamUrl: voiceStreamUrl,
   getToken: getToken,
   getStoredUser: getStoredUser,
   clearSession: clearSession,
@@ -240,6 +263,7 @@ module.exports = {
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,
   createTodosFromTranscript: createTodosFromTranscript,
+  uploadVoice: uploadVoice,
   request: request,
   // Spring physics
   spring: spring,

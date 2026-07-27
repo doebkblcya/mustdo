@@ -81,10 +81,11 @@ def update_todo(
     todo_id: int,
     values: dict[str, object],
 ) -> TodoPublic | None:
-    if get_owned_todo(db, user_id, todo_id) is None:
+    row = get_owned_todo(db, user_id, todo_id)
+    if row is None:
         return None
     if not values:
-        return row_to_todo(get_owned_todo(db, user_id, todo_id))
+        return row_to_todo(row)
 
     allowed = {"content", "due_date", "due_time", "status"}
     assignments = []
@@ -99,7 +100,7 @@ def update_todo(
             params.append(value)
 
     if not assignments:
-        return row_to_todo(get_owned_todo(db, user_id, todo_id))
+        return row_to_todo(row)
 
     assignments.append("updated_at = ?")
     params.append(utcish_now_iso())
@@ -141,26 +142,28 @@ def create_todos(
     now = utcish_now_iso()
     created_ids: list[int] = []
     try:
-        with db:
-            for item in items:
-                cursor = db.execute(
-                    """
-                    INSERT INTO todos (
-                        user_id, content, due_date, due_time, status, created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, 'pending', ?, ?)
-                    """,
-                    (
-                        user_id,
-                        item["content"],
-                        item["due_date"],
-                        item.get("due_time"),
-                        now,
-                        now,
-                    ),
+        db.execute("BEGIN IMMEDIATE")
+        for item in items:
+            cursor = db.execute(
+                """
+                INSERT INTO todos (
+                    user_id, content, due_date, due_time, status, created_at, updated_at
                 )
-                created_ids.append(int(cursor.lastrowid))
+                VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                """,
+                (
+                    user_id,
+                    item["content"],
+                    item["due_date"],
+                    item.get("due_time"),
+                    now,
+                    now,
+                ),
+            )
+            created_ids.append(int(cursor.lastrowid))
+        db.commit()
     except sqlite3.Error:
+        db.rollback()
         raise
 
     placeholders = ",".join("?" for _ in created_ids)

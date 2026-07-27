@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
 
 from app.config import get_settings
+from app.time_utils import utcish_now_iso
 
 
 def get_connection() -> sqlite3.Connection:
@@ -13,15 +13,9 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(settings.database_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
-
-
-def connection_context() -> Iterator[sqlite3.Connection]:
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 
 def init_db() -> None:
@@ -81,3 +75,14 @@ def init_db() -> None:
                 ON todos(user_id, deleted_at);
             """
         )
+
+
+def cleanup_sessions() -> int:
+    """Delete expired or revoked sessions. Returns the count of removed rows."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL",
+            (utcish_now_iso(),),
+        )
+        conn.commit()
+        return cursor.rowcount

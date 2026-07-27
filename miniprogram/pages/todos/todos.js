@@ -27,11 +27,11 @@ Page({
     error: "",
 
     // Voice
-    recording: false,
+    voicePhase: "idle",
+    voiceCancelHover: false,
     voiceMessage: "",
     transcript: "",
     voiceButtonScale: 1,
-    voicePanelY: 16,
     voicePanelOpacity: 0,
 
     // Edit sheet
@@ -71,14 +71,8 @@ Page({
 
   // ---- Voice ----
   recorder: null,
-  socketTask: null,
-  socketReady: false,
   recorderStarted: false,
-  stopRequested: false,
-  voiceEnded: false,
-  voiceEndSent: false,
-  voiceDone: false,
-  pendingFrames: [],
+  _voiceTouchStartY: 0,
 
   // ---- Other ----
   _editCloseTimer: null,
@@ -97,7 +91,6 @@ Page({
   },
 
   onUnload() {
-    this.closeVoiceSocket();
     this._stopAllSprings();
   },
 
@@ -670,33 +663,45 @@ Page({
     wx.redirectTo({ url: "/pages/auth/auth" });
   },
 
+  // ========== Voice input ==========
+
   setupRecorder() {
     if (this.recorder) return;
     this.recorder = wx.getRecorderManager();
 
     this.recorder.onStart(() => {
       this.recorderStarted = true;
-      if (this.stopRequested) {
-        setTimeout(() => this.stopRecorder(), 80);
+    });
+
+    this.recorder.onStop((res) => {
+      this.recorderStarted = false;
+
+      // 取消录音或已离开录音态，不上传
+      if (this.data.voicePhase !== "parsing") return;
+
+      const tempFilePath = res.tempFilePath;
+      if (!tempFilePath) {
+        this.failVoice("录音文件获取失败");
         return;
       }
-      this.setData({
-        recording: true,
-        voiceMessage: this.socketReady ? "正在录音" : "正在准备语音服务",
-      });
-      this._animateVoicePanel(true);
-    });
 
-    this.recorder.onFrameRecorded((event) => {
-      if (event.frameBuffer) {
-        this.sendOrQueueFrame(event.frameBuffer);
-      }
-    });
-
-    this.recorder.onStop(() => {
-      this.recorderStarted = false;
-      this.voiceEnded = true;
-      this.sendVoiceEndIfReady();
+      api.uploadVoice(tempFilePath)
+        .then((result) => {
+          const transcript = (result && result.transcript) || "";
+          if (!transcript) {
+            this.failVoice("语音未识别出有效文本");
+            return;
+          }
+          wx.vibrateShort({ type: "light" });
+          this.setData({
+            voiceMessage: "正在解析待办…",
+            transcript,
+          });
+          return this.createTodosFromVoice(transcript);
+        })
+        .catch((err) => {
+          this.failVoice(err.message || "语音识别失败");
+        });
     });
 
     this.recorder.onError((error) => {
@@ -705,12 +710,30 @@ Page({
     });
   },
 
-  async startVoice() {
-    if (this.data.recording) return;
+  async startVoice(event) {
+    if (this.data.voicePhase !== "idle") return;
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
     }
+
+    // Capture touch position immediately
+    const touch = (event && event.touches && event.touches[0]) ? event.touches[0] : null;
+    this._voiceTouchStartY = touch ? touch.clientY : 0;
+
+    // ── Instant visual feedback ── BEFORE any async operation
+    this.resetVoiceState();
+    this.setData({
+      voicePhase: "recording",
+      voiceCancelHover: false,
+      voiceMessage: "",
+      transcript: "",
+    });
+    this._animateVoiceButton(0.97);
+    this._animateVoicePanel(true);
+    wx.vibrateShort({ type: "heavy" });
+
+    // ── Async: permission (may have been granted before, near-instant) ──
     try {
       await this.ensureRecordPermission();
     } catch (_error) {
@@ -718,33 +741,7 @@ Page({
       return;
     }
 
-    this.resetVoiceState();
-    this.setData({
-      recording: false,
-      voiceMessage: "正在准备语音服务",
-      transcript: "",
-    });
-
-    // Spring press animation
-    if (this._voiceSpring) this._voiceSpring.stop();
-    this._voiceSpring = spring(0.97, {
-      damping: 0.8,
-      response: 0.15,
-      onUpdate: (value) => {
-        this.setData({ voiceButtonScale: value });
-      },
-    });
-
-    wx.vibrateShort({ type: "heavy" });
-
-    this.socketTask = wx.connectSocket({
-      url: api.voiceStreamUrl(),
-      header: {
-        Authorization: `Bearer ${api.getToken()}`,
-      },
-    });
-    this.bindVoiceSocket(this.socketTask);
-
+    // ── Start local recording ──
     try {
       this.recorder.start({
         duration: 30000,
@@ -758,6 +755,57 @@ Page({
     }
   },
 
+  onVoiceButtonMove(event) {
+    if (this.data.voicePhase !== "recording") return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const dy = this._voiceTouchStartY - touch.clientY;
+    const threshold = 40; // px — swipe up threshold
+    const over = dy > threshold;
+    if (over !== this.data.voiceCancelHover) {
+      this.setData({ voiceCancelHover: over });
+      if (over) wx.vibrateShort({ type: "warning" });
+    }
+  },
+
+  stopVoice() {
+    if (this.data.voicePhase !== "recording") return;
+
+    const cancelled = this.data.voiceCancelHover;
+
+    // Stop recorder
+    this.stopRecorder();
+
+    // Animate button back
+    this._animateVoiceButton(1);
+    this._animateVoicePanel(false);
+
+    if (cancelled) {
+      // Cancel — discard everything
+      this.setData({ voicePhase: "idle", voiceCancelHover: false });
+      return;
+    }
+
+    // Normal release — show parsing state, onStop will handle upload
+    this.setData({
+      voicePhase: "parsing",
+      voiceCancelHover: false,
+      voiceMessage: "正在识别语音…",
+      transcript: "",
+    });
+  },
+
+  _animateVoiceButton(target) {
+    if (this._voiceSpring) this._voiceSpring.stop();
+    this._voiceSpring = spring(target, {
+      damping: 0.8,
+      response: target < 1 ? 0.15 : 0.25,
+      onUpdate: (value) => {
+        this.setData({ voiceButtonScale: value });
+      },
+    });
+  },
+
   ensureRecordPermission() {
     return new Promise((resolve, reject) => {
       wx.getSetting({
@@ -766,42 +814,15 @@ Page({
             resolve();
             return;
           }
-          wx.authorize({
-            scope: "scope.record",
-            success: resolve,
-            fail: reject,
-          });
+          wx.authorize({ scope: "scope.record", success: resolve, fail: reject });
         },
         fail: reject,
       });
     });
   },
 
-  stopVoice() {
-    if (this.stopRequested || this.voiceDone) return;
-    this.stopRequested = true;
-    this.setData({ recording: false, voiceMessage: "正在等待最终文本" });
-    this.voiceEnded = true;
-    this.stopRecorder();
-    this.sendVoiceEndIfReady();
-
-    // Spring release animation
-    if (this._voiceSpring) this._voiceSpring.stop();
-    this._voiceSpring = spring(1, {
-      damping: 0.9,
-      response: 0.2,
-      onUpdate: (value) => {
-        this.setData({ voiceButtonScale: value });
-      },
-    });
-
-    this._animateVoicePanel(false);
-  },
-
   stopRecorder() {
-    if (!this.recorderStarted) {
-      return;
-    }
+    if (!this.recorderStarted) return;
     try {
       this.recorder.stop();
     } catch (error) {
@@ -814,12 +835,9 @@ Page({
     if (show) {
       this._voicePanelSpring = spring(1, {
         damping: 0.8,
-        response: 0.3,
+        response: 0.25,
         onUpdate: (value) => {
-          this.setData({
-            voicePanelY: (1 - value) * 16,
-            voicePanelOpacity: value,
-          });
+          this.setData({ voicePanelOpacity: value });
         },
       });
     } else {
@@ -827,97 +845,10 @@ Page({
         damping: 1.0,
         response: 0.2,
         onUpdate: (value) => {
-          this.setData({
-            voicePanelOpacity: value,
-          });
+          this.setData({ voicePanelOpacity: value });
         },
       });
     }
-  },
-
-  bindVoiceSocket(socketTask) {
-    socketTask.onOpen(() => {
-      return;
-    });
-
-    socketTask.onMessage((event) => {
-      let message;
-      try {
-        message = JSON.parse(event.data);
-      } catch (_error) {
-        this.failVoice("语音服务返回格式异常");
-        return;
-      }
-
-      if (message.type === "ready") {
-        this.socketReady = true;
-        this.flushVoiceFrames();
-        this.setData({ voiceMessage: this.data.recording ? "正在录音" : "正在等待最终文本" });
-        this.sendVoiceEndIfReady();
-        return;
-      }
-
-      if (message.type === "partial") {
-        this.setData({
-          transcript: message.transcript || this.data.transcript,
-          voiceMessage: "正在转文字",
-        });
-        return;
-      }
-
-      if (message.type === "final") {
-        const transcript = message.transcript || "";
-        this.setData({ transcript, voiceMessage: "正在解析待办" });
-        this.voiceDone = true;
-        this.closeVoiceSocket();
-        wx.vibrateShort({ type: "light" });
-        this.createTodosFromVoice(transcript);
-        return;
-      }
-
-      if (message.type === "error") {
-        this.failVoice(message.error || "语音识别失败");
-      }
-    });
-
-    socketTask.onError((error) => {
-      void error;
-      this.failVoice("语音连接失败");
-    });
-
-    socketTask.onClose((event) => {
-      void event;
-      if (this.data.voiceMessage && !this.voiceDone) {
-        this.failVoice("语音连接已断开");
-      }
-    });
-  },
-
-  sendOrQueueFrame(frameBuffer) {
-    if (!this.socketReady || !this.socketTask) {
-      this.pendingFrames.push(frameBuffer);
-      return;
-    }
-    this.socketTask.send({
-      data: frameBuffer,
-      fail: () => this.failVoice("语音发送失败"),
-    });
-  },
-
-  flushVoiceFrames() {
-    while (this.pendingFrames.length && this.socketTask) {
-      this.socketTask.send({ data: this.pendingFrames.shift() });
-    }
-  },
-
-  sendVoiceEndIfReady() {
-    if (!this.voiceEnded || this.voiceEndSent || !this.socketReady || !this.socketTask) return;
-    this.flushVoiceFrames();
-    this.voiceEndSent = true;
-    this.socketTask.send({
-      data: JSON.stringify({ type: "end" }),
-      fail: () => this.failVoice("语音发送失败"),
-    });
   },
 
   async createTodosFromVoice(transcript) {
@@ -928,61 +859,43 @@ Page({
     try {
       const result = await api.createTodosFromTranscript(transcript);
       if (!result.items || result.items.length === 0) {
-        this.setData({ voiceMessage: result.message || "未添加待办" });
+        this.setData({
+          voicePhase: "done",
+          voiceMessage: result.message || "未添加待办",
+        });
+        this._dismissVoiceResult();
         return;
       }
-      this.setData({ voiceMessage: `已添加 ${result.items.length} 项` });
+      this.setData({
+        voicePhase: "done",
+        voiceMessage: `已添加 ${result.items.length} 项`,
+      });
       await this.loadTodos();
-      // Re-measure tabs after reload
       setTimeout(() => this._measureTabs(), 200);
+      this._dismissVoiceResult();
     } catch (error) {
       this.failVoice(error.message || "解析失败");
     }
   },
 
-  failVoice(message) {
-    this.voiceDone = true;
-    this.closeVoiceSocket();
+  _dismissVoiceResult() {
+    setTimeout(() => {
+      if (this.data.voicePhase === "done" || this.data.voicePhase === "error") {
+        this.setData({ voicePhase: "idle", voiceMessage: "", transcript: "" });
+      }
+    }, 2000);
+  },
 
-    if (this._voiceSpring) this._voiceSpring.stop();
-    this._voiceSpring = spring(1, {
-      damping: 0.9,
-      response: 0.2,
-      onUpdate: (value) => {
-        this.setData({ voiceButtonScale: value });
-      },
-    });
+  failVoice(message) {
+    this._animateVoiceButton(1);
 
     this.setData({
-      recording: false,
+      voicePhase: "error",
       voiceMessage: message,
     });
+    this._animateVoicePanel(false);
 
-    setTimeout(() => {
-      this._animateVoicePanel(false);
-    }, 1500);
-  },
-
-  closeVoiceSocket() {
-    if (this.socketTask) {
-      try {
-        this.socketTask.close();
-      } catch (_error) {
-        // ignore
-      }
-    }
-    this.socketTask = null;
-  },
-
-  resetVoiceState() {
-    this.closeVoiceSocket();
-    this.socketReady = false;
-    this.recorderStarted = false;
-    this.stopRequested = false;
-    this.voiceEnded = false;
-    this.voiceEndSent = false;
-    this.voiceDone = false;
-    this.pendingFrames = [];
+    this._dismissVoiceResult();
   },
 
   // ========== Cleanup ==========

@@ -93,21 +93,39 @@
     </block>
   </view>
 
-  <!-- Voice status panel -->
-  <view wx:if="{{voiceMessage || transcript}}" class="voice-panel" style="transform: translateY({{voicePanelY || 16}}rpx); opacity: {{voicePanelOpacity || 0}};">
-    <text class="voice-title">{{voiceMessage}}</text>
+  <!-- Voice recording panel — shown during recording -->
+  <view wx:if="{{voicePhase === 'recording'}}" class="voice-panel" style="opacity: {{voicePanelOpacity}};">
+    <view class="voice-wave">
+      <view wx:for="{{[1,2,3,4,5]}}" wx:key="*this" class="wave-bar {{voicePhase === 'recording' ? 'active' : ''}}" style="animation-delay: {{item * 0.08}}s;"></view>
+    </view>
+    <text class="voice-title">{{voiceCancelHover ? '松开取消' : '正在聆听…'}}</text>
     <text wx:if="{{transcript}}" class="transcript">{{transcript}}</text>
+    <view class="voice-cancel-zone {{voiceCancelHover ? 'active' : ''}}">
+      <view class="cancel-icon">✕</view>
+      <text>松开取消</text>
+    </view>
+  </view>
+
+  <!-- Parsing / Result overlay -->
+  <view wx:if="{{voicePhase === 'parsing' || voicePhase === 'done' || voicePhase === 'error'}}" class="voice-result-overlay">
+    <view class="result-card {{voicePhase}}">
+      <view wx:if="{{voicePhase === 'parsing'}}" class="result-spinner"></view>
+      <view wx:else class="result-icon">{{voicePhase === 'done' ? '✓' : '✕'}}</view>
+      <text class="result-message">{{voiceMessage}}</text>
+      <text wx:if="{{transcript && voicePhase === 'done'}}" class="result-transcript">{{transcript}}</text>
+    </view>
   </view>
 
   <!-- Hold-to-talk button -->
   <button
-    class="voice-button {{recording ? 'recording' : ''}}"
+    class="voice-button {{voicePhase === 'recording' ? 'recording' : ''}} {{voiceCancelHover ? 'cancel' : ''}}"
     style="transform: scale({{voiceButtonScale || 1}});"
     catchtouchstart="startVoice"
+    catchtouchmove="onVoiceButtonMove"
     catchtouchend="stopVoice"
     catchtouchcancel="stopVoice"
   >
-    {{recording ? '松开完成' : '按住说话'}}
+    {{voicePhase === 'recording' ? '松开完成' : '按住说话'}}
   </button>
 
   <!-- Edit bottom sheet -->

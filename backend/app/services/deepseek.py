@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import threading
 from datetime import date
 
 import httpx
@@ -10,6 +12,28 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from app.config import get_settings
 from app.schemas import TIME_RE
 from app.time_utils import today_date
+
+
+logger = logging.getLogger("uvicorn.error")
+_deepseek_client: httpx.AsyncClient | None = None
+_deepseek_client_lock = threading.Lock()
+
+
+def get_deepseek_client() -> httpx.AsyncClient:
+    global _deepseek_client
+    if _deepseek_client is None:
+        with _deepseek_client_lock:
+            if _deepseek_client is None:
+                _deepseek_client = httpx.AsyncClient(timeout=35)
+    return _deepseek_client
+
+
+async def close_deepseek_client() -> None:
+    global _deepseek_client
+    with _deepseek_client_lock:
+        if _deepseek_client is not None:
+            await _deepseek_client.aclose()
+            _deepseek_client = None
 
 
 class DeepSeekParseError(RuntimeError):
@@ -112,12 +136,12 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
     }
 
     try:
-        async with httpx.AsyncClient(timeout=35) as client:
-            response = await client.post(
-                f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+        client = get_deepseek_client()
+        response = await client.post(
+            f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         detail = f"status={exc.response.status_code} body={exc.response.text[:300]}"
