@@ -73,6 +73,9 @@
           <text class="todo-meta">{{item.meta}}</text>
         </view>
         <view class="todo-actions">
+          <button class="action-button pin-button {{item.pinned ? 'pinned' : ''}}" data-id="{{item.id}}" data-pinned="{{item.pinned}}" data-index="{{index}}" bindtap="togglePin">
+            <view class="action-icon action-icon--pin"></view>
+          </button>
           <button class="action-button" data-id="{{item.id}}" bindtap="editTodo">
             <view class="action-icon action-icon--edit"></view>
           </button>

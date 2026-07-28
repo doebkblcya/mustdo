@@ -38,6 +38,7 @@ class TodoPublic(BaseModel):
     due_date: date
     due_time: str | None
     status: Literal["pending", "done"]
+    pinned: bool
     created_at: str
     updated_at: str
 
@@ -59,6 +60,7 @@ class TodoUpdateRequest(BaseModel):
     due_date: date | None = None
     due_time: str | None = None
     status: Literal["pending", "done"] | None = None
+    pinned: bool | None = None
 
     @field_validator("content")
     @classmethod

@@ -64,6 +64,8 @@ def init_db() -> None:
                 due_time TEXT,
                 status TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'done')),
+                pinned INTEGER NOT NULL DEFAULT 0
+                    CHECK (pinned IN (0, 1)),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 deleted_at TEXT
@@ -78,6 +80,7 @@ def init_db() -> None:
             """
         )
         _migrate_invite_codes_type(conn)
+        _migrate_todos_pinned(conn)
 
 
 def _migrate_invite_codes_type(conn: sqlite3.Connection) -> None:
@@ -87,6 +90,16 @@ def _migrate_invite_codes_type(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE invite_codes ADD COLUMN type TEXT NOT NULL DEFAULT 'single'"
             " CHECK (type IN ('single', 'multi'))"
+        )
+
+
+def _migrate_todos_pinned(conn: sqlite3.Connection) -> None:
+    """Migration: add pinned column to todos if it doesn't exist."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('todos')").fetchall()}
+    if "pinned" not in cols:
+        conn.execute(
+            "ALTER TABLE todos ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+            " CHECK (pinned IN (0, 1))"
         )
 
 

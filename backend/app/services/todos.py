@@ -14,13 +14,15 @@ def row_to_todo(row: sqlite3.Row) -> TodoPublic:
         due_date=date.fromisoformat(row["due_date"]),
         due_time=row["due_time"],
         status=row["status"],
+        pinned=bool(row["pinned"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
 
 
-def _todo_sort_key(todo: TodoPublic) -> tuple[bool, bool, str, int]:
+def _todo_sort_key(todo: TodoPublic) -> tuple[bool, bool, bool, str, int]:
     return (
+        not todo.pinned,
         todo.status == "done",
         todo.due_time is not None,
         todo.due_time or "",
@@ -87,14 +89,16 @@ def update_todo(
     if not values:
         return row_to_todo(row)
 
-    allowed = {"content", "due_date", "due_time", "status"}
+    allowed = {"content", "due_date", "due_time", "status", "pinned"}
     assignments = []
     params = []
     for key, value in values.items():
         if key not in allowed:
             continue
         assignments.append(f"{key} = ?")
-        if isinstance(value, date):
+        if isinstance(value, bool):
+            params.append(1 if value else 0)
+        elif isinstance(value, date):
             params.append(value.isoformat())
         else:
             params.append(value)

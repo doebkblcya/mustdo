@@ -309,6 +309,34 @@
   line-height: 1;
 }
 
+/* Pin — pushpin shape */
+.action-icon--pin {
+  width: 12rpx;
+  height: 12rpx;
+  border: 2.5rpx solid #6e6e73;
+  border-radius: 50%;
+  position: relative;
+}
+.action-icon--pin::after {
+  content: '';
+  position: absolute;
+  top: -4rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2.5rpx;
+  height: 8rpx;
+  background: #6e6e73;
+  border-radius: 1rpx;
+}
+
+.pin-button.pinned .action-icon--pin {
+  border-color: #ff9f0a;
+  background: #ff9f0a;
+}
+.pin-button.pinned .action-icon--pin::after {
+  background: #ff9f0a;
+}
+
 /* Edit — diagonal pencil stroke */
 .action-icon--edit {
   width: 24rpx;

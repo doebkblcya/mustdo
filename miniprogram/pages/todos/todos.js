@@ -162,6 +162,7 @@ Page({
     const date = view === "today" ? todos && todos.today_date : view === "tomorrow" ? todos && todos.tomorrow_date : "";
     const items = (groups[view] || []).map((item) => ({
       ...item,
+      pinned: Boolean(item.pinned),
       meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
       checkScale: 1,
       deleting: false,
@@ -270,6 +271,30 @@ Page({
         }
       },
     });
+  },
+
+  async togglePin(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const currentPinned = event.currentTarget.dataset.pinned === true || event.currentTarget.dataset.pinned === "true";
+    const newPinned = !currentPinned;
+
+    // Optimistic update
+    const items = this.data.items.map((item) =>
+      item.id === id ? { ...item, pinned: newPinned } : item
+    );
+    this.setData({ items });
+    this.patchGroupItem(id, { pinned: newPinned });
+
+    try {
+      await api.updateTodo(id, { pinned: newPinned });
+    } catch (error) {
+      const revertedItems = this.data.items.map((item) =>
+        item.id === id ? { ...item, pinned: currentPinned } : item
+      );
+      this.setData({ items: revertedItems });
+      this.patchGroupItem(id, { pinned: currentPinned });
+      wx.showToast({ title: error.message || "操作失败", icon: "none" });
+    }
   },
 
   removeFromGroups(todos, id) {
