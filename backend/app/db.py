@@ -37,6 +37,8 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS invite_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code_hash TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL DEFAULT 'single'
+                    CHECK (type IN ('single', 'multi')),
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'redeemed', 'revoked')),
                 label TEXT,
@@ -74,6 +76,17 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_todos_user_deleted
                 ON todos(user_id, deleted_at);
             """
+        )
+        _migrate_invite_codes_type(conn)
+
+
+def _migrate_invite_codes_type(conn: sqlite3.Connection) -> None:
+    """Migration: add type column to invite_codes if it doesn't exist."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('invite_codes')").fetchall()}
+    if "type" not in cols:
+        conn.execute(
+            "ALTER TABLE invite_codes ADD COLUMN type TEXT NOT NULL DEFAULT 'single'"
+            " CHECK (type IN ('single', 'multi'))"
         )
 
 

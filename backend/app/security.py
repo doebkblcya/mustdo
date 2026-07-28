@@ -79,8 +79,9 @@ def normalize_invite_code(code: str) -> str:
     return code.strip().upper().replace(" ", "")
 
 
-def generate_invite_code() -> str:
+def generate_invite_code(invite_type: str = "single") -> str:
+    prefix = {"single": "TODO-S", "multi": "TODO-M"}[invite_type]
     chunks = []
     for _ in range(3):
         chunks.append("".join(secrets.choice(INVITE_ALPHABET) for _ in range(4)))
-    return "TODO-" + "-".join(chunks)
+    return prefix + "-" + "-".join(chunks)

@@ -84,14 +84,24 @@ def _register_user(db: sqlite3.Connection, payload: RegisterRequest) -> tuple[Us
             (username, username_normalized, hash_password(payload.password), now, now),
         )
         user_id = int(cursor.lastrowid)
-        db.execute(
-            """
-            UPDATE invite_codes
-            SET used_at = ?, used_by_user_id = ?
-            WHERE id = ?
-            """,
-            (now, user_id, invite["id"]),
-        )
+        if invite["type"] == "single":
+            db.execute(
+                """
+                UPDATE invite_codes
+                SET status = 'redeemed', used_at = ?, used_by_user_id = ?
+                WHERE id = ?
+                """,
+                (now, user_id, invite["id"]),
+            )
+        else:
+            db.execute(
+                """
+                UPDATE invite_codes
+                SET used_at = ?, used_by_user_id = ?
+                WHERE id = ?
+                """,
+                (now, user_id, invite["id"]),
+            )
         token = _create_session(db, user_id)
         db.execute("COMMIT")
     except HTTPException:
