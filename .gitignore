@@ -69,6 +69,8 @@ db.sqlite3
 db.sqlite3-journal
 todo_analyzer.db
 todo_analyzer.db-journal
+todo_analyzer.db-wal
+todo_analyzer.db-shm
 
 # Flask stuff:
 instance/

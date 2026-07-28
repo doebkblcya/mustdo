@@ -56,16 +56,8 @@
         wx:for="{{items}}"
         wx:key="id"
         class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.deleting ? 'deleting' : ''}}"
-        style="transform: translateX({{item.swipeX || 0}}rpx);"
-        bindtouchstart="onItemTouchStart"
-        bindtouchmove="onItemTouchMove"
-        bindtouchend="onItemTouchEnd"
-        data-index="{{index}}"
         data-id="{{item.id}}"
       >
-        <view class="delete-action" style="opacity: {{item.swipeX ? (-item.swipeX / 120) : 0}};">
-          <view class="delete-action-icon"></view>
-        </view>
         <button
           class="check-button"
           style="transform: scale({{item.checkScale || 1}});"

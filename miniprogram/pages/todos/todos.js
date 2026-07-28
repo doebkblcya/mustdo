@@ -10,9 +10,6 @@ const VIEW_META = {
   upcoming: "后续",
 };
 
-// How far an item can be swiped left (rpx)
-const SWIPE_THRESHOLD = 80;
-const MAX_SWIPE = 140;
 
 Page({
   data: {
@@ -66,8 +63,6 @@ Page({
   _tabPositions: null,
   _tabWidth: 0,
   _tabsMeasured: false,
-  _swipeState: null,
-  _swipeSpring: null,
 
   // ---- Voice ----
   recorder: null,
@@ -167,7 +162,6 @@ Page({
     const items = (groups[view] || []).map((item) => ({
       ...item,
       meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
-      swipeX: 0,
       checkScale: 1,
       deleting: false,
     }));
@@ -303,126 +297,6 @@ Page({
       }
     }
     this.data.todos = { ...todos, groups };
-  },
-
-  // ========== Swipe to delete ==========
-
-  onItemTouchStart(event) {
-    // Reset any previous swipe on a different item
-    const currentIndex = event.currentTarget.dataset.index;
-    this._resetOtherSwipes(currentIndex);
-
-    const touch = event.touches[0];
-    this._swipeState = {
-      index: currentIndex,
-      id: event.currentTarget.dataset.id,
-      startX: touch.clientX,
-      startY: touch.clientY,
-      currentOffset: this.data.items[currentIndex].swipeX || 0,
-      swiping: false,
-    };
-    if (this._swipeSpring) {
-      this._swipeSpring.stop();
-      this._swipeSpring = null;
-    }
-  },
-
-  onItemTouchMove(event) {
-    if (!this._swipeState) return;
-    const s = this._swipeState;
-    const touch = event.touches[0];
-    const dx = touch.clientX - s.startX;
-    const dy = touch.clientY - s.startY;
-
-    // Detect horizontal intent
-    if (!s.swiping) {
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        s.swiping = true;
-      } else {
-        return;
-      }
-    }
-
-    // Only allow left swipe (negative offset)
-    let offset = s.currentOffset + dx;
-    // Rubber-band past the max
-    if (offset < -MAX_SWIPE) {
-      const overshoot = -(offset + MAX_SWIPE);
-      offset = -MAX_SWIPE - rubberband(overshoot, 200);
-    }
-    if (offset > 0) {
-      offset = rubberband(offset, 200);
-    }
-
-    this.setData({ [`items[${s.index}].swipeX`]: offset });
-  },
-
-  onItemTouchEnd(event) {
-    if (!this._swipeState) return;
-    const s = this._swipeState;
-    const offset = this.data.items[s.index].swipeX || 0;
-
-    if (s.swiping && offset < -SWIPE_THRESHOLD) {
-      // Commit: spring to full reveal
-      this._swipeSpring = spring(-MAX_SWIPE, {
-        damping: 0.8,
-        response: 0.25,
-        onUpdate: (value) => {
-          this.setData({ [`items[${s.index}].swipeX`]: value });
-        },
-        onComplete: () => {
-          // Auto-delete after a brief pause showing the button
-          this._swipeDeleteTimer = setTimeout(() => {
-            this._confirmSwipeDelete(s.index, s.id);
-          }, 600);
-        },
-      });
-      wx.vibrateShort({ type: "warning" });
-    } else {
-      // Cancel: spring back to 0
-      this._swipeSpring = spring(0, {
-        damping: 1.0,
-        response: 0.25,
-        onUpdate: (value) => {
-          this.setData({ [`items[${s.index}].swipeX`]: value });
-        },
-      });
-    }
-
-    this._swipeState = null;
-  },
-
-  _resetOtherSwipes(exceptIndex) {
-    const items = this.data.items;
-    let changed = false;
-    for (let i = 0; i < items.length; i++) {
-      if (i !== exceptIndex && items[i].swipeX !== 0) {
-        items[i] = { ...items[i], swipeX: 0 };
-        changed = true;
-      }
-    }
-    if (changed) this.setData({ items });
-    if (this._swipeDeleteTimer) {
-      clearTimeout(this._swipeDeleteTimer);
-      this._swipeDeleteTimer = null;
-    }
-  },
-
-  _confirmSwipeDelete(index, id) {
-    this._swipeDeleteTimer = null;
-    // Animate out
-    this.setData({ [`items[${index}].deleting`]: true });
-    setTimeout(() => {
-      const prevItems = this.data.items;
-      const prevTodos = this.data.todos;
-      this.setData({
-        items: prevItems.filter((item) => item.id !== id),
-        todos: this.removeFromGroups(prevTodos, id),
-      });
-      api.deleteTodo(id).catch(() => {
-        // Silently fail — item is already removed from UI
-      });
-    }, 250);
   },
 
   // ========== Edit sheet ==========
@@ -642,7 +516,6 @@ Page({
       const items = ((todos && todos.groups && todos.groups[this.data.activeView]) || []).map((item) => ({
         ...item,
         meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
-        swipeX: 0,
         checkScale: 1,
         deleting: false,
       }));
@@ -923,7 +796,7 @@ Page({
   _stopAllSprings() {
     const springs = [
       this._pillSpring, this._sheetSpring, this._voiceSpring,
-      this._voicePanelSpring, this._maskSpring, this._swipeSpring,
+      this._voicePanelSpring, this._maskSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });
     Object.values(this._checkSprings).forEach((s) => { if (s) s.stop(); });

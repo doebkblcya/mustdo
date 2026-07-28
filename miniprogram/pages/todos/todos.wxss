@@ -342,50 +342,6 @@
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-/* ---- Swipe delete ---- */
-
-.delete-action {
-  position: absolute;
-  right: 22rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 120rpx;
-  height: 64rpx;
-  border-radius: 16rpx;
-  background: #ff3b30;
-  color: #ffffff;
-  font-size: 28rpx;
-  font-weight: 700;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.delete-action-icon {
-  position: relative;
-  width: 24rpx;
-  height: 24rpx;
-}
-.delete-action-icon::before,
-.delete-action-icon::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 24rpx;
-  height: 2.5rpx;
-  background: #ffffff;
-  border-radius: 1.5rpx;
-}
-.delete-action-icon::before {
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-.delete-action-icon::after {
-  transform: translate(-50%, -50%) rotate(-45deg);
-}
-
 /* ================================================================
    Empty & error states
    ================================================================ */
