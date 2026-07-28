@@ -113,8 +113,8 @@
     wx:if="{{editVisible}}"
     class="sheet-mask"
     style="opacity: {{maskOpacity}};"
-    catchtap="cancelEdit"
     catchtouchmove="noop"
+    bindtap="onMaskTap"
   >
     <view
       class="edit-sheet"

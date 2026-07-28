@@ -366,6 +366,12 @@ Page({
     });
   },
 
+  onMaskTap(event) {
+    // Only close when tapping the mask background, not a child element
+    if (event.target !== event.currentTarget) return;
+    this.cancelEdit();
+  },
+
   cancelEdit() {
     if (this.data.editSubmitting) return;
     this._animateSheetOut(0);
@@ -500,32 +506,12 @@ Page({
         due_date: this.data.editDate,
         due_time: this.data.editUseTime ? this.data.editTime : null,
       };
-      console.log('[submitEdit] id=', this.data.editTodoId, 'patch=', JSON.stringify(patch));
-      const updated = await api.updateTodo(this.data.editTodoId, patch);
-      console.log('[submitEdit] response=', JSON.stringify(updated));
+      await api.updateTodo(this.data.editTodoId, patch);
 
-      const todos = this.data.todos;
-      if (todos && todos.groups) {
-        for (const key of ["today", "tomorrow", "upcoming"]) {
-          if (todos.groups[key]) {
-            todos.groups[key] = todos.groups[key].map((item) =>
-              item.id === this.data.editTodoId ? { ...item, ...patch } : item
-            );
-          }
-        }
-      }
-
-      const items = ((todos && todos.groups && todos.groups[this.data.activeView]) || []).map((item) => ({
-        ...item,
-        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
-        checkScale: 1,
-        deleting: false,
-      }));
-
-      this.setData({ editSubmitting: false, todos, items });
-
+      this.setData({ editSubmitting: false });
       wx.vibrateShort({ type: "light" });
       this._animateSheetOut(0);
+      await this.loadTodos();
     } catch (error) {
       wx.showToast({ title: error.message || "保存失败", icon: "none" });
       this.setData({ editSubmitting: false });

@@ -77,39 +77,47 @@ JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNOREC
 
 
 def _system_prompt(today: date) -> str:
+    from datetime import timedelta
+
+    tomorrow = today + timedelta(days=1)
+    days_until_fri = (4 - today.weekday()) % 7
+    if days_until_fri == 0:
+        days_until_fri = 7
+    next_friday = today + timedelta(days=days_until_fri)
+    next_week_friday = next_friday + timedelta(days=7)
+
+    weekday_cn = "一二三四五六日"[today.weekday()]
+    day_after_tomorrow = today + timedelta(days=2)
+    three_days_later = today + timedelta(days=3)
+
     return f"""
-你是一个待办事项解析器，只能输出 JSON。
+你是一个待办事项解析器。把用户语音转写文本拆分成待办数组。只输出 JSON。
 
-当前日期：{today.isoformat()}
-时区：Asia/Shanghai
-
-任务：把用户语音转写文本拆分成待办数组。
+当前日期：{today.isoformat()}（周{weekday_cn}），时区 Asia/Shanghai
 
 规则：
-1. 只处理新增待办，不输出修改、删除、完成等操作。
-2. 如果用户整段话是在修改、删除、取消或完成已有事项，且没有新增事项，返回空数组。
-3. 每个待办必须包含 content、due_date、due_time。
-4. due_date 使用 YYYY-MM-DD。
-5. 没有明确日期时，due_date 使用当前日期。
-6. 模糊日期也使用当前日期，例如“有空”“回头”“改天”“哪天”。
-7. 如果用户说的是过去日期，也使用当前日期，不能返回过去日期。
-8. “今天”是当前日期，“明天”是当前日期后一天。
-9. “周五”解析为不早于当前日期的最近一个周五；如果当天就是周五，则为当前日期。
-10. “下周五”解析为下一个自然周的周五。
-11. “月底”解析为当前月份最后一天。
-12. due_time 只能是 null 或 HH:MM。
-13. 没有明确具体时间时，due_time 为 null。
-14. “上午”“下午”“晚上”“早上”等模糊时段不能转成具体时间，due_time 为 null。
-15. “下午三点”“15点”“9:30”这类明确时间才转为 24 小时 HH:MM。
-16. content 要去掉日期和时间表达，保留动作和对象。
-17. 最多返回 20 条待办。
+1. 只处理新增待办，不处理修改、删除、完成已有事项。没有新增事项则返回空数组 []。
+2. due_date 格式 YYYY-MM-DD。没有明确日期（含"有空""回头""改天""哪天"等）默认今天；过去日期也修正为今天。
+3. "今天"={today.isoformat()}，"明天"={tomorrow.isoformat()}，"后天"={day_after_tomorrow.isoformat()}，"大后天"={three_days_later.isoformat()}。
+4. "周X"=不早于今天的最近一个周X；"下周X"=下一个自然周的周X。当前周五={next_friday.isoformat()}，下周五={next_week_friday.isoformat()}。
+5. "月底"=当月最后一天。
+6. due_time 为 null 或 HH:MM。仅"下午三点""15点""9:30"等明确时间才转 24 小时制；"上午""下午""晚上""早上"等模糊时段 due_time=null。
+7. content 去掉日期和时间表达，只保留动作和对象。
+8. 同一地点/平台/场景的多个动作合并为一条待办（如"淘宝买A还有B"合并为一条）；不同地点/场景才拆分。
+9. 最多返回 20 条。
 
-输出格式必须是：
-{{
-  "items": [
-    {{"content": "买菜", "due_date": "{today.isoformat()}", "due_time": null}}
-  ]
-}}
+示例：
+输入："明天下午三点买菜"
+输出：{{"items":[{{"content":"买菜","due_date":"{tomorrow.isoformat()}","due_time":"15:00"}}]}}
+
+输入："淘宝买螺丝还有双面胶，周五去超市买牛奶"
+输出：{{"items":[{{"content":"淘宝买螺丝和双面胶","due_date":"{today.isoformat()}","due_time":null}},{{"content":"超市买牛奶","due_date":"{next_friday.isoformat()}","due_time":null}}]}}
+
+输入："有空把报告写完"
+输出：{{"items":[{{"content":"写完报告","due_date":"{today.isoformat()}","due_time":null}}]}}
+
+输入："下周五下午两点开会，明天交房租"
+输出：{{"items":[{{"content":"开会","due_date":"{next_week_friday.isoformat()}","due_time":"14:00"}},{{"content":"交房租","due_date":"{tomorrow.isoformat()}","due_time":null}}]}}
 """.strip()
 
 
