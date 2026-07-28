@@ -48,7 +48,7 @@ def get_settings() -> Settings:
         database_path=database_path,
         session_days=int(os.getenv("SESSION_DAYS", "30")),
         timezone=os.getenv("TIMEZONE", "Asia/Shanghai"),
-        max_audio_seconds=float(os.getenv("MAX_AUDIO_SECONDS", "30")),
+        max_audio_seconds=float(os.getenv("MAX_AUDIO_SECONDS", "60")),
         min_audio_seconds=float(os.getenv("MIN_AUDIO_SECONDS", "0.5")),
         volc_api_key=os.getenv("VOLC_API_KEY", ""),
         volc_app_key=os.getenv("VOLC_APP_KEY", ""),

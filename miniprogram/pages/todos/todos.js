@@ -1,3 +1,4 @@
+var config = require("../../config");
 var api = require("../../utils/api");
 var spring = api.spring;
 var rubberband = api.rubberband;
@@ -610,7 +611,7 @@ Page({
     // ── Start local recording ──
     try {
       this.recorder.start({
-        duration: 30000,
+        duration: config.RECORD_MAX_DURATION,
         sampleRate: 16000,
         numberOfChannels: 1,
         format: "pcm",
