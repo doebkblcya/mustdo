@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 from fastapi import APIRouter, Depends, status
@@ -11,6 +12,7 @@ from app.services.todos import list_grouped_todos, soft_delete_todo, update_todo
 
 
 router = APIRouter(prefix="/api/todos", tags=["todos"])
+logger = logging.getLogger("uvicorn.error")
 
 
 @router.get("", response_model=TodoListResponse)
@@ -29,6 +31,8 @@ def patch_todo(
     user: sqlite3.Row = Depends(current_user),
 ):
     fields = payload.model_fields_set
+    logger.info("patch_todo_received todo_id=%s user_id=%s fields=%s due_date=%s",
+                todo_id, user["id"], fields, payload.due_date)
     values: dict[str, object] = {}
     if "content" in fields:
         if payload.content is None:

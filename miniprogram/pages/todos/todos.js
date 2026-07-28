@@ -500,7 +500,9 @@ Page({
         due_date: this.data.editDate,
         due_time: this.data.editUseTime ? this.data.editTime : null,
       };
-      await api.updateTodo(this.data.editTodoId, patch);
+      console.log('[submitEdit] id=', this.data.editTodoId, 'patch=', JSON.stringify(patch));
+      const updated = await api.updateTodo(this.data.editTodoId, patch);
+      console.log('[submitEdit] response=', JSON.stringify(updated));
 
       const todos = this.data.todos;
       if (todos && todos.groups) {
