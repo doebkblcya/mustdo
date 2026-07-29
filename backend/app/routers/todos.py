@@ -45,11 +45,7 @@ def patch_todo(
     if "pinned" in fields:
         values["pinned"] = payload.pinned
 
-    print(f"[DEBUG patch_todo] todo_id={todo_id} fields={fields} values={values}")
-
     updated = update_todo(db, int(user["id"]), todo_id, values)
-
-    print(f"[DEBUG patch_todo] result pinned={updated.pinned if updated else 'None'}")
     if updated is None:
         raise_api_error(status.HTTP_404_NOT_FOUND, "todo_not_found", "待办不存在")
     return updated

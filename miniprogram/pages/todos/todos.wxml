@@ -57,11 +57,11 @@
         wx:key="id"
         class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}"
       >
-        <view class="swipe-zone swipe-zone--pin {{item.pinned ? 'active' : ''}}">
+        <view class="swipe-zone swipe-zone--pin">
           <view class="swipe-icon swipe-icon--pin"></view>
         </view>
         <view
-          class="todo-item {{item.status === 'done' ? 'done' : ''}}"
+          class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
           style="transform: translateX({{item.swipeX || 0}}px);"
           data-index="{{index}}"
           bindtouchstart="onItemTouchStart"

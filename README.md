@@ -16,12 +16,13 @@
 ## 功能
 
 - 按住说话，松手后自动语音转文字 → AI 解析 → 创建待办
-- 录音状态全部收敛在按钮本身：按住 / 松开完成 / 上滑取消
-- 今天 / 明天 / 后续动态分类，时间线视图
-- 无具体时间事项置顶，有具体时间事项按时间排列
-- 支持自然语言日期：「周五」「下周三」「月底」
+- 录音状态收敛在按钮本身：按住 / 松开完成 / 上滑取消（上限 60 秒）
+- 今天 / 明天 / 后续动态分类
+- 置顶待办：右滑卡片切换置顶，暖色 accent 标识，列表内优先排序
+- 左滑卡片弹出确认后删除
+- 支持自然语言日期：「周五」「下周三」「后天」「月底」
 - 手动编辑内容、日期、时间、完成状态和删除
-- 用户名/密码登录 + 单次邀请码注册，数据按用户隔离
+- 用户名/密码登录 + 邀请码注册（单次/长期），数据按用户隔离
 
 ## 语音链路
 
@@ -33,7 +34,7 @@
                                             SQLite 待办
 ```
 
-小程序采集 16kHz/16bit/mono PCM 音频，松手后一次性 HTTP POST 到后端。后端封装 WAV header 后调用火山引擎录音文件极速版做识别，再调用 DeepSeek（`deepseek-v4-flash`，JSON Output，thinking 禁用）做结构化解析。
+小程序采集 16kHz/16bit/mono PCM 音频（上限 60 秒），松手后一次性 HTTP POST 到后端。后端封装 WAV header 后调用火山引擎录音文件极速版做识别，再调用 DeepSeek（`deepseek-v4-flash`，JSON Output，thinking 禁用，含 few-shot 日期推理）做结构化解析。
 
 ## 快速开始
 
@@ -44,7 +45,8 @@ cd backend
 cp .env.example .env          # 编辑 .env，填入火山引擎和 DeepSeek 的 API Key
 uv sync
 uv run python scripts/init_db.py
-uv run python scripts/create_invite.py   # 生成注册邀请码
+uv run python scripts/create_invite.py               # 生成单次邀请码
+uv run python scripts/create_invite.py --type multi   # 生成长期邀请码
 uv run uvicorn app.main:app --reload
 ```
 
@@ -115,7 +117,7 @@ DEEPSEEK_API_KEY=
 | `POST` | `/api/auth/logout` | 登出 |
 | `GET` | `/api/me` | 当前用户 |
 | `GET` | `/api/todos` | 获取待办（今天/明天/后续分组） |
-| `PATCH` | `/api/todos/{id}` | 编辑待办 |
+| `PATCH` | `/api/todos/{id}` | 编辑待办（内容/日期/时间/状态/置顶） |
 | `DELETE` | `/api/todos/{id}` | 删除待办 |
 | `POST` | `/api/voice/transcriptions` | 上传音频转写 |
 | `POST` | `/api/todos/ai` | 文本解析并新增待办 |

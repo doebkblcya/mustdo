@@ -62,8 +62,9 @@ backend/
       todos.py             待办分组、创建、更新、清理
   scripts/
     init_db.py             初始化数据库
-    create_invite.py       创建单次邀请码
+    create_invite.py       创建邀请码（支持 --type single/multi）
     list_invites.py        查看邀请码记录
+    clear_invites.py       清空所有邀请码
     cleanup_overdue.py     清理过期待办
 ```
 
@@ -72,17 +73,18 @@ backend/
 当前 SQLite schema 包含：
 
 - `users`：用户名、密码 hash、状态、登录时间。
-- `invite_codes`：单次邀请码 hash、状态、使用记录。
+- `invite_codes`：单次/多次邀请码 hash、类型、状态、使用记录。
 - `sessions`：登录 session token hash、过期和撤销状态。
-- `todos`：用户待办，包含内容、日期、可选时间、完成状态和软删除字段。
+- `todos`：用户待办，包含内容、日期、可选时间、置顶状态、完成状态和软删除字段。
 
 邀请码和 session token 都不明文存库。邀请码明文只在生成时输出一次，hash 依赖 `SECRET_KEY`。
 
 ### 认证
 
-当前用户系统是”用户名/密码 + 单次邀请码注册”：
+当前用户系统是”用户名/密码 + 邀请码注册”：
 
 - 注册需要 `username`、`password`、`invite_code`。
+- 邀请码支持 `single`（单次使用，格式 `TODO-S-...`）和 `multi`（长期使用，格式 `TODO-M-...`）。
 - 登录只需要 `username`、`password`。
 - 使用 Bearer Token 认证，`Authorization: Bearer <token>` header。
 - 所有待办 API 都从 session 解析 `user_id`，客户端不传 `user_id`。
@@ -92,9 +94,10 @@ backend/
 
 - 每条待办必须有 `due_date`。
 - 没声明日期时默认为中国上海时区的今天。
-- 模糊日期也默认为今天，例如“有空”“回头”“改天”。
+- 模糊日期也默认为今天，例如”有空””回头””改天”。
 - `due_time` 可为空。
 - 没声明具体时间时，`due_time = null`。
+- “后天””大后天”直接计算为对应日期。
 - “晚上/下午/早上”等模糊时段不转成具体时间。
 - “周五”解析为不早于今天的最近周五。
 - “下周五”解析为下一个自然周周五。
@@ -107,6 +110,8 @@ backend/
 - `due_date = 明天`：明天
 - `due_date > 明天`：后续
 - `due_date < 今天`：隐藏，并由脚本定期清理
+
+排序规则（分组内）：置顶优先 → pending 优先 → 无具体时间优先 → 时间升序 → id 升序。
 
 ### 语音和 AI 数据流
 
@@ -151,7 +156,7 @@ ASR 协议：
 - `POST /api/auth/logout`：登出，撤销 Bearer Token
 - `GET /api/me`：当前用户
 - `GET /api/todos`：获取今天/明天/后续分组
-- `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态
+- `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态、置顶
 - `DELETE /api/todos/{id}`：软删除待办
 - `POST /api/voice/transcriptions`：上传音频文件并返回转写文本
 - `POST /api/todos/ai`：将转写文本解析并新增待办
@@ -205,7 +210,21 @@ Authorization: Bearer <token>
 request 合法域名：https://mustdo.doebkblcya.com
 ```
 
-语音链路：小程序用 `wx.getRecorderManager` 采集 `16kHz/mono/PCM` 音频，松手后通过 `wx.uploadFile` 一次性上传到 `POST /api/voice/transcriptions`。后端将 PCM 封装 WAV header 后调用火山引擎极速版 ASR，返回转写文本。不再需要 WebSocket，也不需要配置 socket 合法域名。
+语音链路：小程序用 `wx.getRecorderManager` 采集 `16kHz/mono/PCM` 音频（上限 60s，配置在 `config.js`），松手后通过 `wx.uploadFile` 一次性上传到 `POST /api/voice/transcriptions`。后端将 PCM 封装 WAV header 后调用火山引擎极速版 ASR，返回转写文本。
+
+### 滑动交互
+
+卡片支持左右滑动操作：
+
+- **右滑**：露出置顶区域，松手切换置顶状态，乐观更新 + 本地排序
+- **左滑**：露出删除区域，松手弹回后弹出确认框
+- **编辑按钮**：始终可见，不参与滑动
+- 滑动硬上限 80px，不超出彩色区域
+
+### 卡片状态
+
+- **done**：仅文字内容降透明度，卡片背景保持不透明（避免背后滑动区透出）
+- **pinned**：暖白底色 + 左侧橙色 accent 线，视觉层级区别于普通卡片
 
 ## 当前进度
 
@@ -213,18 +232,17 @@ request 合法域名：https://mustdo.doebkblcya.com
 
 - FastAPI 后端项目结构。
 - SQLite schema 初始化。
-- 用户名/密码登录和单次邀请码注册。
+- 用户名/密码登录和单次/长期邀请码注册。
 - Bearer Token 认证。
 - 待办按用户隔离。
-- 待办查询、编辑、删除、完成状态。
-- 今天/明天/后续动态分组。
+- 待办查询、编辑、删除、完成状态、置顶。
+- 今天/明天/后续动态分组 + 置顶优先排序。
 - 过期待办隐藏和清理脚本。
-- 微信小程序（原生框架）。
-- 小程序按住说话、松手 HTTP POST 上传。
+- 微信小程序（原生框架），含滑动交互和卡片状态系统。
+- 小程序按住说话、松手 HTTP POST 上传（60s 上限）。
 - 火山引擎录音文件极速版 ASR 封装。
-- DeepSeek JSON 解析封装。
-- 邀请码创建和查看脚本。
-- 语音链路单元测试。
+- DeepSeek JSON 解析封装（few-shot prompt + 动态日期）。
+- 邀请码创建、查看、清空脚本。
 
 已验证：
 
@@ -292,11 +310,26 @@ scripts/server.sh stop
 
 `scripts/server.sh` 默认绑定 `0.0.0.0:8000`；运行日志在 `backend/logs/uvicorn.log`，pid 文件在 `backend/run/uvicorn.pid`。如需只允许本机反向代理访问，可用 `HOST=127.0.0.1 scripts/server.sh start`。
 
+创建邀请码：
+
+```bash
+cd backend
+uv run python scripts/create_invite.py          # 单次
+uv run python scripts/create_invite.py --type multi  # 长期
+```
+
 查看邀请码：
 
 ```bash
 cd backend
 uv run python scripts/list_invites.py
+```
+
+清空邀请码：
+
+```bash
+cd backend
+uv run python scripts/clear_invites.py
 ```
 
 清理过期待办：

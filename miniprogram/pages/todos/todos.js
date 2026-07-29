@@ -15,6 +15,24 @@ const VIEW_META = {
 const SWIPE_ZONE = 80; // px — pin / delete zone width
 const SWIPE_THRESHOLD = 40; // px — commit threshold
 
+// Local sort key (mirrors backend _todo_sort_key)
+function _todoSort(a, b) {
+  // Pinned first
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  // Pending before done
+  if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
+  // No-time before has-time
+  var aHasTime = !!a.due_time;
+  var bHasTime = !!b.due_time;
+  if (aHasTime !== bHasTime) return aHasTime ? 1 : -1;
+  // By time
+  var aTime = a.due_time || '';
+  var bTime = b.due_time || '';
+  if (aTime !== bTime) return aTime < bTime ? -1 : 1;
+  // By id
+  return a.id - b.id;
+}
+
 
 Page({
   data: {
@@ -310,10 +328,9 @@ Page({
     }
 
     let offset = s.currentOffset + dx;
-    // Right side — pin zone
-    if (offset > SWIPE_ZONE) offset = SWIPE_ZONE + rubberband(offset - SWIPE_ZONE, 80);
-    // Left side — delete zone
-    if (offset < -SWIPE_ZONE) offset = -SWIPE_ZONE - rubberband(-(offset + SWIPE_ZONE), 80);
+    // Hard clamp — don't overshoot the zone
+    if (offset > SWIPE_ZONE) offset = SWIPE_ZONE;
+    if (offset < -SWIPE_ZONE) offset = -SWIPE_ZONE;
 
     this.setData({ [`items[${s.index}].swipeX`]: offset });
   },
@@ -331,31 +348,35 @@ Page({
 
     if (offset > SWIPE_THRESHOLD) {
       // Right swipe → toggle pin
-      console.log('[swipe] pin triggered, offset=', offset, 'threshold=', SWIPE_THRESHOLD);
       this._springTo(s.index, 0);
       this._swipeState = null;
       const item = this.data.items[s.index];
-      this._doPin(item.id, item.pinned, s.index);
+      this._doPin(item.id, item.pinned);
     } else if (offset < -SWIPE_THRESHOLD) {
-      // Left swipe → delete confirm
-      this._springTo(s.index, 0);
+      // Left swipe → delete confirm (wait for spring to finish)
+      var self = this;
+      var targetIndex = s.index;
+      var item = this.data.items[s.index];
       this._swipeState = null;
-      const item = this.data.items[s.index];
-      this._confirmSwipeDelete(item.id, s.index);
+      this._springTo(targetIndex, 0, function() {
+        self._confirmSwipeDelete(item.id, targetIndex);
+      });
     } else {
       this._springTo(s.index, 0);
       this._swipeState = null;
     }
   },
 
-  _springTo(index, target) {
+  _springTo(index, target, onComplete) {
     if (this._swipeSpring) this._swipeSpring.stop();
+    var self = this;
     this._swipeSpring = spring(target, {
       damping: 0.75,
       response: 0.28,
       onUpdate: function(value) {
-        this.setData({ [`items[${index}].swipeX`]: value });
-      }.bind(this),
+        self.setData({ [`items[${index}].swipeX`]: value });
+      },
+      onComplete: onComplete || null,
     });
   },
 
@@ -390,24 +411,25 @@ Page({
     this._swipeState = null;
   },
 
-  _doPin(id, currentPinned, index) {
+  _doPin(id, currentPinned) {
     var newPinned = !currentPinned;
-    console.log('[pin] _doPin called, id=', id, 'newPinned=', newPinned);
-    var items = this.data.items.map(function(item, i) {
-      return i === index ? { ...item, pinned: newPinned } : item;
+
+    // Optimistic update + local sort (find by id, not index — sort-safe)
+    var items = this.data.items.map(function(item) {
+      return item.id === id ? { ...item, pinned: newPinned } : item;
     });
-    this.setData({ items: items });
+    this.setData({ items: items.sort(_todoSort) });
     this.patchGroupItem(id, { pinned: newPinned });
 
     wx.vibrateShort({ type: 'light' });
 
     var self = this;
     api.updateTodo(id, { pinned: newPinned }).catch(function(err) {
-      // Revert on failure
-      var reverted = self.data.items.map(function(item, i) {
-        return i === index ? { ...item, pinned: currentPinned } : item;
+      // Revert on failure — find by id
+      var reverted = self.data.items.map(function(item) {
+        return item.id === id ? { ...item, pinned: currentPinned } : item;
       });
-      self.setData({ items: reverted });
+      self.setData({ items: reverted.sort(_todoSort) });
       self.patchGroupItem(id, { pinned: currentPinned });
       console.error('置顶操作失败:', err);
     });
