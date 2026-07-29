@@ -182,8 +182,127 @@
   gap: 12rpx;
 }
 
+/* ---- Swipe wrapper ---- */
+
+.todo-swipe-wrapper {
+  position: relative;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04), 0 6rpx 20rpx rgba(0, 0, 0, 0.03);
+}
+
+.todo-swipe-wrapper:active {
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06), 0 8rpx 24rpx rgba(0, 0, 0, 0.05);
+}
+
+/* ---- Swipe zones (behind the sliding card) ---- */
+
+.swipe-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 0;
+  width: 160rpx;
+}
+
+.swipe-zone--pin {
+  left: 0;
+  border-top-left-radius: 24rpx;
+  border-bottom-left-radius: 24rpx;
+  background: #f5f5f7;
+}
+.swipe-zone--pin.active {
+  background: rgba(255, 159, 10, 0.12);
+}
+
+.swipe-zone--delete {
+  right: 0;
+  border-top-right-radius: 24rpx;
+  border-bottom-right-radius: 24rpx;
+  background: rgba(255, 59, 48, 0.10);
+}
+
+/* ---- Swipe icons ---- */
+
+.swipe-icon {
+  display: block;
+}
+
+.swipe-icon--pin {
+  width: 8rpx;
+  height: 32rpx;
+  background: #6e6e73;
+  border-radius: 4rpx;
+  position: relative;
+}
+.swipe-icon--pin::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #6e6e73;
+}
+.swipe-zone--pin.active .swipe-icon--pin,
+.swipe-zone--pin.active .swipe-icon--pin::before {
+  background: #ff9f0a;
+}
+
+.swipe-icon--edit {
+  width: 24rpx;
+  height: 3.5rpx;
+  background: #b0b0b8;
+  border-radius: 2rpx;
+  transform: rotate(-45deg);
+}
+
+.swipe-icon--delete {
+  position: relative;
+  width: 24rpx;
+  height: 24rpx;
+}
+.swipe-icon--delete::before,
+.swipe-icon--delete::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 24rpx;
+  height: 3.5rpx;
+  background: #ff3b30;
+  border-radius: 2rpx;
+}
+.swipe-icon--delete::before { transform: rotate(45deg); }
+.swipe-icon--delete::after  { transform: rotate(-45deg); }
+
+/* ---- Edit button (always visible on card) ---- */
+
+.edit-btn {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.edit-btn::after { border: none; }
+.edit-btn:active { background: #f0f0f2; }
+
+/* ---- Todo item (slides to reveal zones) ---- */
+
 .todo-item {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 18rpx;
@@ -191,20 +310,14 @@
   padding: 20rpx 22rpx;
   border-radius: 24rpx;
   background: #ffffff;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04), 0 6rpx 20rpx rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-  transition: box-shadow 0.2s ease;
+  will-change: transform;
 }
 
-.todo-item:active {
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06), 0 8rpx 24rpx rgba(0, 0, 0, 0.05);
+.todo-item.done .todo-content {
+  opacity: 0.5;
 }
 
-.todo-item.done {
-  opacity: 0.45;
-}
-
-.todo-item.deleting {
+.todo-swipe-wrapper.deleting {
   opacity: 0;
   transition: opacity 0.22s ease;
 }
@@ -262,112 +375,6 @@
   color: #888888;
   font-size: 23rpx;
   font-weight: 500;
-}
-
-/* ---- Action buttons ---- */
-
-.todo-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 10rpx;
-  flex: 0 0 auto;
-}
-
-.action-button {
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14rpx;
-  background: #f5f5f7;
-  color: #6e6e73;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-
-.action-button:active {
-  transform: scale(0.92);
-  transition: transform 80ms ease-out;
-  background: #e5e5ea;
-}
-
-.action-button.danger {
-  background: rgba(255, 59, 48, 0.08);
-  color: #ff3b30;
-}
-
-.action-button.danger:active {
-  background: rgba(255, 59, 48, 0.16);
-}
-
-/* ---- Action icons ---- */
-
-.action-icon {
-  display: block;
-  line-height: 1;
-}
-
-/* Pin — pushpin shape */
-.action-icon--pin {
-  width: 12rpx;
-  height: 12rpx;
-  border: 2.5rpx solid #6e6e73;
-  border-radius: 50%;
-  position: relative;
-}
-.action-icon--pin::after {
-  content: '';
-  position: absolute;
-  top: -4rpx;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2.5rpx;
-  height: 8rpx;
-  background: #6e6e73;
-  border-radius: 1rpx;
-}
-
-.pin-button.pinned .action-icon--pin {
-  border-color: #ff9f0a;
-  background: #ff9f0a;
-}
-.pin-button.pinned .action-icon--pin::after {
-  background: #ff9f0a;
-}
-
-/* Edit — diagonal pencil stroke */
-.action-icon--edit {
-  width: 24rpx;
-  height: 2.5rpx;
-  background: #6e6e73;
-  border-radius: 1.5rpx;
-  transform: rotate(-45deg);
-}
-
-/* Delete — crossed lines forming an X */
-.action-icon--delete {
-  position: relative;
-  width: 20rpx;
-  height: 20rpx;
-}
-.action-icon--delete::before,
-.action-icon--delete::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 20rpx;
-  height: 2.5rpx;
-  background: #ff3b30;
-  border-radius: 1.5rpx;
-}
-.action-icon--delete::before {
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-.action-icon--delete::after {
-  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 /* ================================================================

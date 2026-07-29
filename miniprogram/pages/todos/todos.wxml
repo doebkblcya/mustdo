@@ -55,33 +55,39 @@
       <view
         wx:for="{{items}}"
         wx:key="id"
-        class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.deleting ? 'deleting' : ''}}"
-        data-id="{{item.id}}"
+        class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}"
       >
-        <button
-          class="check-button"
-          style="transform: scale({{item.checkScale || 1}});"
-          data-id="{{item.id}}"
-          data-status="{{item.status}}"
-          data-index="{{index}}"
-          bindtap="toggleTodo"
-        >
-          {{item.status === 'done' ? '✓' : ''}}
-        </button>
-        <view class="todo-content">
-          <text class="todo-title">{{item.content}}</text>
-          <text class="todo-meta">{{item.meta}}</text>
+        <view class="swipe-zone swipe-zone--pin {{item.pinned ? 'active' : ''}}">
+          <view class="swipe-icon swipe-icon--pin"></view>
         </view>
-        <view class="todo-actions">
-          <button class="action-button pin-button {{item.pinned ? 'pinned' : ''}}" data-id="{{item.id}}" data-pinned="{{item.pinned}}" data-index="{{index}}" bindtap="togglePin">
-            <view class="action-icon action-icon--pin"></view>
+        <view
+          class="todo-item {{item.status === 'done' ? 'done' : ''}}"
+          style="transform: translateX({{item.swipeX || 0}}px);"
+          data-index="{{index}}"
+          bindtouchstart="onItemTouchStart"
+          bindtouchmove="onItemTouchMove"
+          bindtouchend="onItemTouchEnd"
+        >
+          <button
+            class="check-button"
+            style="transform: scale({{item.checkScale || 1}});"
+            data-id="{{item.id}}"
+            data-status="{{item.status}}"
+            data-index="{{index}}"
+            bindtap="toggleTodo"
+          >
+            {{item.status === 'done' ? '✓' : ''}}
           </button>
-          <button class="action-button" data-id="{{item.id}}" bindtap="editTodo">
-            <view class="action-icon action-icon--edit"></view>
+          <view class="todo-content">
+            <text class="todo-title">{{item.content}}</text>
+            <text class="todo-meta">{{item.meta}}</text>
+          </view>
+          <button class="edit-btn" data-id="{{item.id}}" bindtap="editTodo">
+            <view class="swipe-icon swipe-icon--edit"></view>
           </button>
-          <button class="action-button danger" data-id="{{item.id}}" bindtap="deleteTodo">
-            <view class="action-icon action-icon--delete"></view>
-          </button>
+        </view>
+        <view class="swipe-zone swipe-zone--delete">
+          <view class="swipe-icon swipe-icon--delete"></view>
         </view>
       </view>
     </block>

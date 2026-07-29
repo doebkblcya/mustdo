@@ -11,6 +11,10 @@ const VIEW_META = {
   upcoming: "后续",
 };
 
+// Swipe-to-reveal
+const SWIPE_ZONE = 80; // px — pin / delete zone width
+const SWIPE_THRESHOLD = 40; // px — commit threshold
+
 
 Page({
   data: {
@@ -64,6 +68,8 @@ Page({
   _tabPositions: null,
   _tabWidth: 0,
   _tabsMeasured: false,
+  _swipeState: null,
+  _swipeSpring: null,
 
   // ---- Voice ----
   recorder: null,
@@ -239,64 +245,6 @@ Page({
     }
   },
 
-  deleteTodo(event) {
-    const id = Number(event.currentTarget.dataset.id);
-    wx.showModal({
-      title: "删除待办",
-      content: "确定删除这条待办？",
-      success: async (result) => {
-        if (!result.confirm) return;
-
-        // Animate out
-        const idx = this.data.items.findIndex((item) => item.id === id);
-        if (idx >= 0) {
-          this.setData({ [`items[${idx}].deleting`]: true });
-          await new Promise((r) => setTimeout(r, 260));
-        }
-
-        const prevItems = this.data.items;
-        const prevTodos = this.data.todos;
-        this.setData({
-          items: prevItems.filter((item) => item.id !== id),
-          todos: this.removeFromGroups(prevTodos, id),
-        });
-
-        wx.vibrateShort({ type: "medium" });
-
-        try {
-          await api.deleteTodo(id);
-        } catch (error) {
-          this.setData({ items: prevItems, todos: prevTodos });
-          wx.showToast({ title: error.message || "删除失败", icon: "none" });
-        }
-      },
-    });
-  },
-
-  async togglePin(event) {
-    const id = Number(event.currentTarget.dataset.id);
-    const currentPinned = event.currentTarget.dataset.pinned === true || event.currentTarget.dataset.pinned === "true";
-    const newPinned = !currentPinned;
-
-    // Optimistic update
-    const items = this.data.items.map((item) =>
-      item.id === id ? { ...item, pinned: newPinned } : item
-    );
-    this.setData({ items });
-    this.patchGroupItem(id, { pinned: newPinned });
-
-    try {
-      await api.updateTodo(id, { pinned: newPinned });
-    } catch (error) {
-      const revertedItems = this.data.items.map((item) =>
-        item.id === id ? { ...item, pinned: currentPinned } : item
-      );
-      this.setData({ items: revertedItems });
-      this.patchGroupItem(id, { pinned: currentPinned });
-      wx.showToast({ title: error.message || "操作失败", icon: "none" });
-    }
-  },
-
   removeFromGroups(todos, id) {
     if (!todos || !todos.groups) return todos;
     const groups = {};
@@ -323,6 +271,175 @@ Page({
       }
     }
     this.data.todos = { ...todos, groups };
+  },
+
+  // ========== Item swipe (right=pin, left=delete) ==========
+
+  onItemTouchStart(event) {
+    const index = event.currentTarget.dataset.index;
+    this._closeOtherSwipes(index);
+
+    if (this._swipeSpring) {
+      this._swipeSpring.stop();
+      this._swipeSpring = null;
+    }
+
+    const touch = event.touches[0];
+    this._swipeState = {
+      index,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      currentOffset: this.data.items[index].swipeX || 0,
+      swiping: false,
+    };
+  },
+
+  onItemTouchMove(event) {
+    if (!this._swipeState) return;
+    const s = this._swipeState;
+    const touch = event.touches[0];
+    const dx = touch.clientX - s.startX;
+    const dy = touch.clientY - s.startY;
+
+    if (!s.swiping) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        s.swiping = true;
+      } else {
+        return;
+      }
+    }
+
+    let offset = s.currentOffset + dx;
+    // Right side — pin zone
+    if (offset > SWIPE_ZONE) offset = SWIPE_ZONE + rubberband(offset - SWIPE_ZONE, 80);
+    // Left side — delete zone
+    if (offset < -SWIPE_ZONE) offset = -SWIPE_ZONE - rubberband(-(offset + SWIPE_ZONE), 80);
+
+    this.setData({ [`items[${s.index}].swipeX`]: offset });
+  },
+
+  onItemTouchEnd(event) {
+    if (!this._swipeState) return;
+    const s = this._swipeState;
+    const offset = this.data.items[s.index].swipeX || 0;
+
+    if (!s.swiping) {
+      this._springTo(s.index, 0);
+      this._swipeState = null;
+      return;
+    }
+
+    if (offset > SWIPE_THRESHOLD) {
+      // Right swipe → toggle pin
+      console.log('[swipe] pin triggered, offset=', offset, 'threshold=', SWIPE_THRESHOLD);
+      this._springTo(s.index, 0);
+      this._swipeState = null;
+      const item = this.data.items[s.index];
+      this._doPin(item.id, item.pinned, s.index);
+    } else if (offset < -SWIPE_THRESHOLD) {
+      // Left swipe → delete confirm
+      this._springTo(s.index, 0);
+      this._swipeState = null;
+      const item = this.data.items[s.index];
+      this._confirmSwipeDelete(item.id, s.index);
+    } else {
+      this._springTo(s.index, 0);
+      this._swipeState = null;
+    }
+  },
+
+  _springTo(index, target) {
+    if (this._swipeSpring) this._swipeSpring.stop();
+    this._swipeSpring = spring(target, {
+      damping: 0.75,
+      response: 0.28,
+      onUpdate: function(value) {
+        this.setData({ [`items[${index}].swipeX`]: value });
+      }.bind(this),
+    });
+  },
+
+  _closeOtherSwipes(exceptIndex) {
+    var items = this.data.items;
+    var changed = false;
+    var next = items.map(function(item, i) {
+      if (i !== exceptIndex && item.swipeX !== 0) {
+        changed = true;
+        return { ...item, swipeX: 0 };
+      }
+      return item;
+    });
+    if (changed) this.setData({ items: next });
+  },
+
+  _closeAllSwipes() {
+    var items = this.data.items;
+    var changed = false;
+    var next = items.map(function(item) {
+      if (item.swipeX !== 0) {
+        changed = true;
+        return { ...item, swipeX: 0 };
+      }
+      return item;
+    });
+    if (changed) this.setData({ items: next });
+    if (this._swipeSpring) {
+      this._swipeSpring.stop();
+      this._swipeSpring = null;
+    }
+    this._swipeState = null;
+  },
+
+  _doPin(id, currentPinned, index) {
+    var newPinned = !currentPinned;
+    console.log('[pin] _doPin called, id=', id, 'newPinned=', newPinned);
+    var items = this.data.items.map(function(item, i) {
+      return i === index ? { ...item, pinned: newPinned } : item;
+    });
+    this.setData({ items: items });
+    this.patchGroupItem(id, { pinned: newPinned });
+
+    wx.vibrateShort({ type: 'light' });
+
+    var self = this;
+    api.updateTodo(id, { pinned: newPinned }).catch(function(err) {
+      // Revert on failure
+      var reverted = self.data.items.map(function(item, i) {
+        return i === index ? { ...item, pinned: currentPinned } : item;
+      });
+      self.setData({ items: reverted });
+      self.patchGroupItem(id, { pinned: currentPinned });
+      console.error('置顶操作失败:', err);
+    });
+  },
+
+  _confirmSwipeDelete(id, index) {
+    var self = this;
+    wx.showModal({
+      title: '删除待办',
+      content: '确定删除这条待办？',
+      success: function(res) {
+        if (!res.confirm) return;
+        self._doDelete(id, index);
+      },
+    });
+  },
+
+  _doDelete(id, index) {
+    var self = this;
+    this.setData({ [`items[${index}].deleting`]: true });
+    setTimeout(function() {
+      var prevItems = self.data.items;
+      var prevTodos = self.data.todos;
+      self.setData({
+        items: prevItems.filter(function(item) { return item.id !== id; }),
+        todos: self.removeFromGroups(prevTodos, id),
+      });
+      wx.vibrateShort({ type: 'medium' });
+      api.deleteTodo(id).catch(function() {
+        // Already removed from UI
+      });
+    }, 220);
   },
 
   // ========== Edit sheet ==========
@@ -810,7 +927,7 @@ Page({
   _stopAllSprings() {
     const springs = [
       this._pillSpring, this._sheetSpring, this._voiceSpring,
-      this._voicePanelSpring, this._maskSpring,
+      this._voicePanelSpring, this._maskSpring, this._swipeSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });
     Object.values(this._checkSprings).forEach((s) => { if (s) s.stop(); });
