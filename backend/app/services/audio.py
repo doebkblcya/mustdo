@@ -30,7 +30,11 @@ def _validate_pcm(pcm: bytes) -> bytes:
     if duration < settings.min_audio_seconds:
         raise_api_error(status.HTTP_400_BAD_REQUEST, "recording_too_short", "录音太短")
     if duration > settings.max_audio_seconds:
-        raise_api_error(status.HTTP_400_BAD_REQUEST, "recording_too_long", "录音超过 30 秒")
+        raise_api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "recording_too_long",
+            f"录音超过 {settings.max_audio_seconds:.0f} 秒",
+        )
     return pcm
 
 

@@ -195,7 +195,8 @@ class AudioUploadTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 400)
         self.assertEqual(raised.exception.detail["code"], "recording_too_long")
-        self.assertEqual(raised.exception.detail["message"], "录音超过 30 秒")
+        max_seconds = get_settings().max_audio_seconds
+        self.assertEqual(raised.exception.detail["message"], f"录音超过 {max_seconds:.0f} 秒")
 
 
 # ---------------------------------------------------------------------------
