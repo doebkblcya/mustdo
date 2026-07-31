@@ -45,8 +45,9 @@ FastAPI Backend
 backend/
   app/
     config.py              配置加载，读取 .env
-    db.py                  SQLite 连接和 schema 初始化
+    db.py                  SQLite 连接、schema 初始化与增量迁移
     deps.py                FastAPI 依赖，包括当前用户解析
+    errors.py              统一错误模型 {code, message, details}
     main.py                应用入口、生命周期、路由注册
     schemas.py             Pydantic 请求/响应模型
     security.py            密码、邀请码、session token 哈希
@@ -56,7 +57,7 @@ backend/
       todos.py             待办查询、编辑、删除、完成状态
       voice.py             语音转写和 AI 新增待办
     services/
-      audio.py             上传音频读取和 PCM 校验/转码入口
+      audio.py             上传音频读取、时长校验、非 PCM 格式 ffmpeg 转码
       asr.py               火山引擎录音文件极速版 HTTP 客户端
       deepseek.py          DeepSeek JSON 解析和校验
       todos.py             待办分组、创建、更新、清理
@@ -66,6 +67,7 @@ backend/
     list_invites.py        查看邀请码记录
     clear_invites.py       清空所有邀请码
     cleanup_overdue.py     清理过期待办
+    server.sh              后台启动/停止/重启/日志（生产用）
 ```
 
 ### 数据模型
@@ -88,6 +90,8 @@ backend/
 - 登录只需要 `username`、`password`。
 - 使用 Bearer Token 认证，`Authorization: Bearer <token>` header。
 - 所有待办 API 都从 session 解析 `user_id`，客户端不传 `user_id`。
+- 用户名 3-24 位字母/数字/下划线，密码至少 8 位。
+- 用户被禁用（`status='disabled'`）后已有 session 立即失效（查询时校验用户状态）。
 - 暂不支持忘记密码、邮箱、手机号和第三方登录。
 
 ### 待办规则
@@ -129,11 +133,13 @@ backend/
 
 失败策略：
 
-- 火山引擎 ASR 失败：返回 502，不写入数据库。
-- 语音识别没有可用文本：不写入数据库。
+- 录音过短（`MIN_AUDIO_SECONDS` 默认 0.5s）→ 400 `recording_too_short`；超过上限 → 400 `recording_too_long`。
+- 非 PCM 格式（mp3/m4a 等）：后端自动 ffmpeg 转码为 16k/mono/s16le；未安装 ffmpeg 返回 415。
+- 火山引擎检测到静音/空音频（状态码 20000003）→ 返回 `200` 和空 transcript，不写入数据库。
+- 火山引擎 ASR 其他失败：返回 502，不写入数据库。
 - transcript 中没有可新增待办：返回 `200` 和 `items=[]`，前端展示”未添加待办”。
-- DeepSeek 请求失败或返回格式非法：不写入数据库。
-- 数据库保存失败：不写入数据库，前端展示错误。
+- DeepSeek 请求失败或返回格式非法：返回 502，不写入数据库。
+- 数据库保存失败：返回 500，不写入数据库，前端展示错误。
 
 模块边界：
 
@@ -146,11 +152,13 @@ ASR 协议：
 - 接口：`POST https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash`
 - 同步 HTTP POST，一次请求即返回结果，无需轮询
 - 音频格式：WAV（后端自动将 PCM 封装 44 字节 WAV header）
-- 认证：新版控制台 `X-Api-Key` header
-- 详见 `docs/voice-asr-volcano.md`
+- 认证：优先新版控制台 `X-Api-Key`（`VOLC_API_KEY`）；未配置时回退旧版 `X-Api-App-Key` + `X-Api-Access-Key`
+- 静音/空音频（状态码 20000003）不视为错误，返回空 transcript
+- 详见 `docs/极速版.md`
 
 ### API 摘要
 
+- `GET /api/health`：健康检查（无鉴权）
 - `POST /api/auth/token/register`：注册并返回 Bearer Token
 - `POST /api/auth/token/login`：登录并返回 Bearer Token
 - `POST /api/auth/logout`：登出，撤销 Bearer Token
@@ -178,7 +186,8 @@ ASR 协议：
 - `code` 是稳定机器码，用于前端状态机、多端客户端和测试断言。
 - `message` 是可直接展示给用户的中文文案。
 - `details` 用于参数校验等结构化信息；没有时为 `null`。
-- FastAPI 参数校验错误统一返回 `code=validation_error`。
+- FastAPI 参数校验错误统一返回 `code=validation_error`，`details` 为明细数组：`[{field, message, type}, ...]`。
+- 未显式指定 code 的 HTTPException 按状态码映射默认 code/message（见 `app/errors.py`）。
 
 ## 微信小程序
 
@@ -231,44 +240,54 @@ request 合法域名：https://mustdo.doebkblcya.com
 已完成：
 
 - FastAPI 后端项目结构。
-- SQLite schema 初始化。
+- SQLite schema 初始化 + 增量迁移（邀请码 type、待办 pinned 列自动补列）。
 - 用户名/密码登录和单次/长期邀请码注册。
-- Bearer Token 认证。
+- Bearer Token 认证，disabled 用户 session 失效，启动时清理过期/撤销 session。
 - 待办按用户隔离。
 - 待办查询、编辑、删除、完成状态、置顶。
 - 今天/明天/后续动态分组 + 置顶优先排序。
 - 过期待办隐藏和清理脚本。
-- 微信小程序（原生框架），含滑动交互和卡片状态系统。
+- 统一错误模型 `{code, message, details}`（含 422 校验明细），`/api/health` 健康检查。
+- 录音时长校验（下限 0.5s / 上限 60s）+ 非 PCM 格式 ffmpeg 转码。
+- 微信小程序（原生框架），含滑动交互和卡片状态系统、无障碍适配（大字号/旧安卓降级动画）。
 - 小程序按住说话、松手 HTTP POST 上传（60s 上限）。
-- 火山引擎录音文件极速版 ASR 封装。
-- DeepSeek JSON 解析封装（few-shot prompt + 动态日期）。
+- 火山引擎录音文件极速版 ASR 封装（新旧版控制台认证兼容）。
+- DeepSeek JSON 解析封装（few-shot prompt + 动态日期，容错 fenced JSON 包裹）。
 - 邀请码创建、查看、清空脚本。
+- 后端单元测试 5 个文件 20 个用例。
 
 已验证：
 
 - Python 语法编译：`python -m compileall backend/app backend/scripts backend/tests`
 - 后端单元测试：`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v`
-- 数据库初始化脚本。
+  - `test_auth.py`：登录/当前用户/登出
+  - `test_todos_api.py`：删除接口
+  - `test_voice.py`：WAV 封装、ASR 成功/静音/失败、上传校验、AI 空结果
+  - `test_deepseek.py`：thinking 禁用、fenced JSON、空内容、空 items
+  - `test_errors.py`：统一错误模型与校验明细
+- 数据库初始化脚本和增量迁移。
 - 邀请码生成和列表脚本。
 - 待办保存逻辑。
 
 ## 已知限制
 
-- 自动化测试仍较少，目前主要覆盖语音基础逻辑。
+- 自动化测试覆盖认证、待办、语音、DeepSeek 解析和错误模型（20 个用例），但缺少待办分组/时间规则、编辑置顶交互、并发等场景。
 - 没有忘记密码和管理员后台。
 - 没有用户资料、账号绑定或多设备管理。
 - 语音只支持新增，不支持语音修改或删除。
 - ASR 和 LLM 依赖外部服务可用性。
 - 本地 SQLite 适合 MVP 和小范围测试，后续多用户规模扩大时需要评估迁移。
+- 重命名（Todo Analyzer → Mustdo）尚未落地到代码（见 `docs/RENAME.md`）。
 
 ## 后续展望
 
 短期：
 
-- 增加后端单元测试，覆盖认证、待办分组、时间规则和 AI JSON 校验。
+- 继续补测试：待办分组/时间规则、编辑和置顶交互、清理脚本。
 - 优化 prompt 测试样例，沉淀常见语音表达。
 - 增加简单的管理员脚本：重置密码、禁用用户、撤销邀请码。
 - 将过期清理接入 cron 或后台定时任务。
+- 按 `docs/RENAME.md` 完成重命名（包名、数据库文件名、localStorage key 需协调部署）。
 
 中期：
 

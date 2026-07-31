@@ -2,6 +2,8 @@
 
 > 记录小程序语音转文字功能在 ASR API 选型、EOS 调参、交互延迟等议题上的讨论过程和最终决策。
 
+> **状态：历史决策记录。** 本文描述的讯飞 IAT 流式方案已下线并被替换。当前实现为**火山引擎录音文件极速版**（同步 HTTP POST，无 EOS 问题），代码在 `backend/app/services/asr.py`，协议见 `docs/极速版.md`。文中"按下延迟"的修复结论（视觉反馈移到异步操作之前）仍适用。
+
 ## 1. 产品需求
 
 - 按住说话，松手结束（明确的开始/结束边界）
@@ -125,16 +127,23 @@ async startVoice() {
 - HTTP POST 不存在 EOS 问题
 - 后端代码量从 ~500 行（voice_stream.py + iflytek.py）降到 ~50 行
 
-### 5.3 为什么暂时保留当前方案
+### 5.3 为什么暂时保留当前方案（历史）
 
 - 讯飞 IAT **可用**（EOS=1500ms 后工作正常）
 - 按下延迟已修复（代码层面，与 API 无关）
 - 松手后延迟 ~2s，可合并到解析 UI 中，不敏感
 - 换 API 需要后端重写 + 云端账号开通，有一定成本
 
-### 5.4 未来迁移方向
+### 5.4 迁移结果：火山引擎录音文件极速版 ✅
 
-如果后续需要优化松手后的尾部延迟，或希望简化架构，推荐迁移到 HTTP POST 的一句话识别 API。候选服务商包括火山引擎、阿里云、百度等，协议形态均为：
+后续按此方向完成了迁移，当前实现为火山引擎极速版（`backend/app/services/asr.py`）：
+
+- 协议为同步 HTTP POST 一句话识别，无 EOS 问题
+- 后端代码量从 ~500 行（voice_stream.py + iflytek.py）降到 ~150 行（asr.py + audio.py）
+- 小程序仍是"录完一次性上传"，交互保持不变
+- 配套：录音时长下限/上限校验、非 PCM 格式 ffmpeg 转码、新旧版控制台认证兼容
+
+协议形态：
 
 ```
 POST /recognize
@@ -149,17 +158,27 @@ Response: { "text": "识别结果" }
 | 问题 | 根因 | 解决方案 | 状态 |
 |------|------|----------|:---:|
 | 按下后无反馈 | 代码把 UI 放在了 await 之后 | 视觉反馈移到异步之前 | ✅ |
-| 松手后等太久 | EOS=3000ms | 降至 1500ms | ✅ |
-| 短音频误判"录音过短" | EOS=300ms 太激进 | EOS=1500ms | ✅ |
-| API 选型错误 | IAT 为流式场景设计 | 暂用 IAT，未来考虑 HTTP POST | ⏸️ |
-| 最后帧在 end 后到达 | recorder.onStop 与 onFrameRecorded 竞态 | setTimeout 150ms 延迟发 end | ✅ |
+| 松手后等太久 | EOS=3000ms | 降至 1500ms | ✅（已随讯飞方案下线） |
+| 短音频误判"录音过短" | EOS=300ms 太激进 | EOS=1500ms | ✅（已随讯飞方案下线） |
+| API 选型错误 | IAT 为流式场景设计 | 暂用 IAT，未来考虑 HTTP POST | ✅ 已迁移火山极速版 |
+| 最后帧在 end 后到达 | recorder.onStop 与 onFrameRecorded 竞态 | setTimeout 150ms 延迟发 end | ✅（已随讯飞方案下线） |
 
 ## 7. 相关文件
 
+### 文中提到的讯飞方案文件（均已删除）
+
 | 文件 | 职责 |
 |------|------|
-| `miniprogram/pages/todos/todos.js` | 小程序端录音 + WebSocket 发送 + 状态机 + UI |
-| `backend/app/routers/voice.py` | WebSocket endpoint + 认证 + 音频接收 |
-| `backend/app/services/voice_stream.py` | 讯飞连接编排 + 识别事件处理 |
-| `backend/app/services/iflytek.py` | 讯飞协议：鉴权 URL、音频帧、结束帧、解析响应 |
-| `backend/app/config.py` | EOS 配置 (`IFLYTEK_EOS_MS`) |
+| `backend/app/services/voice_stream.py` | ~~讯飞连接编排 + 识别事件处理~~（已删除） |
+| `backend/app/services/iflytek.py` | ~~讯飞协议：鉴权 URL、音频帧、结束帧、解析响应~~（已删除） |
+| `backend/app/config.py` | ~~EOS 配置 (`IFLYTEK_EOS_MS`)~~（已删除） |
+
+### 当前实现（火山极速版）
+
+| 文件 | 职责 |
+|------|------|
+| `miniprogram/pages/todos/todos.js` | 小程序端录音 + `wx.uploadFile` 上传 + 状态机 + UI |
+| `backend/app/routers/voice.py` | HTTP 端点：转写 + AI 新增待办，认证和错误边界 |
+| `backend/app/services/asr.py` | PCM→WAV→base64→火山极速版 HTTP 请求、文本提取 |
+| `backend/app/services/audio.py` | 上传音频读取、时长校验、ffmpeg 转码 |
+| `backend/app/services/deepseek.py` | DeepSeek JSON 解析和校验 |
