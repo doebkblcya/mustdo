@@ -39,7 +39,7 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    database_path = Path(os.getenv("DATABASE_PATH", "./todo_analyzer.db"))
+    database_path = Path(os.getenv("DATABASE_PATH", "./mustdo.db"))
     if not database_path.is_absolute():
         database_path = BASE_DIR / database_path
 

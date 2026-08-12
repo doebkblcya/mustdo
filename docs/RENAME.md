@@ -2,7 +2,7 @@
 
 本文档记录项目中所有需要从 "Todo Analyzer" / "todo-analyzer" / "todo_analyzer" 改为 "Mustdo" / "mustdo" 的位置，供后续迭代批量修改时参考。
 
-> **当前状态：尚未执行。** 代码中的包名、数据库文件名、storage key 仍为 `todo_analyzer*`；README / 小程序 README / 品牌展示已改为 Mustdo。React 前端（`frontend/`）已从仓库移除，相关条目不再存在。
+> **当前状态：已执行（2026-08-12）。** 包名、数据库文件名、storage key 均已改为 `mustdo*`；README / 小程序 README / 品牌展示已使用 Mustdo。React 前端（`frontend/`）已从仓库移除。本文档保留作为迁移记录。
 
 ## 命名约定
 

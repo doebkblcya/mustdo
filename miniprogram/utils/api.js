@@ -2,8 +2,8 @@ var config = require("../config");
 
 var API_BASE_URL = config.API_BASE_URL;
 
-var TOKEN_KEY = "todo_analyzer_token";
-var USER_KEY = "todo_analyzer_user";
+var TOKEN_KEY = "mustdo_token";
+var USER_KEY = "mustdo_user";
 
 function apiUrl(path) {
   return API_BASE_URL.replace(/\/$/, "") + path;

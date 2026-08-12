@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
         yield
         await close_deepseek_client()
 
-    app = FastAPI(title="Todo Analyzer", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Mustdo", version="0.1.0", lifespan=lifespan)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
