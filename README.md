@@ -231,8 +231,6 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 
 - 补齐待办分组 / 时间规则 / 编辑置顶交互的测试
 - 管理员脚本：重置密码、禁用用户、撤销邀请码
-- 过期清理接入 cron 或后台定时任务
-- 完成 Todo Analyzer → Mustdo 重命名落地（见 `docs/RENAME.md`）
 
 **中期**
 
