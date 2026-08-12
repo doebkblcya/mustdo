@@ -39,6 +39,9 @@ REMOTE_KEEP_DAYS="${REMOTE_KEEP_DAYS:-90}"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"; }
 fail() { log "ERROR: $*"; exit 1; }
 
+# 目录必须最先就位——log/fail 都可能写日志，晚建就写不进去
+mkdir -p "$BACKUP_DIR"
+
 case "${1:-}" in
   --local) UPLOAD=false ;;
   "")      UPLOAD=true  ;;
@@ -54,7 +57,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
   log "WARN: .env 不存在: $ENV_FILE（备份将只有数据库）"
 fi
 
-mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT

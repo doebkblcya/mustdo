@@ -25,14 +25,25 @@
 
 ```bash
 # 创建部署用户 todo（非 root 跑服务），SSH key 登录
-apt update && apt install -y curl nginx certbot sqlite3 ffmpeg
 
-# uv（部署用户）
+# ── Debian/Ubuntu 系 ──
+# apt update && apt install -y curl nginx certbot sqlite3 ffmpeg
+
+# ── AlmaLinux/CentOS/Rocky（RHEL 系，当前生产实测：AlmaLinux）──
+sudo dnf install -y epel-release
+sudo dnf install -y curl nginx certbot python3-certbot-nginx sqlite
+# ffmpeg 不在 RHEL 系默认/EPEL 仓库，需另加 RPM Fusion（仅非 PCM 音频转码兜底用，可后装）：
+sudo dnf install -y --nogpgcheck https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm
+sudo dnf install -y ffmpeg
+
+# uv（两系通用，部署用户）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# rclone（备份用）
+# rclone（两系通用，备份用）
 curl https://rclone.org/install.sh | sudo bash
 ```
+
+> 注意：RHEL 系 sqlite 包名是 `sqlite`（二进制仍是 `sqlite3`）；nginx 在 AppStream 仓库、certbot 在 EPEL。
 
 ### 2. 部署代码
 
@@ -119,7 +130,8 @@ server {
 ```bash
 rclone config
 # n → 名字 r2 → 类型 s3 → provider 选 Cloudflare →
-# account id（R2 控制台可见）、access key、secret、endpoint https://<account_id>.r2.cloudflared.com
+# account id（R2 控制台可见）、access key、secret、endpoint https://<account_id>.r2.cloudflarestorage.com
+# ⚠️ 域名是 cloudflarestorage.com，不是 cloudflared.com（后者是被停放的仿冒域名）
 rclone mkdir r2:mustdo-backups
 rclone lsd r2:   # 确认可见
 ```
