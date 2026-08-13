@@ -237,6 +237,7 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 - iOS 客户端（复用同一套后端 API）
 - 账号绑定设计，为多端同步做准备
 - 任务搜索、过期查看和完成项折叠
+- 语音链路优化：mp3 直传火山 ASR，跳过 ffmpeg 转码
 
 **远期**
 

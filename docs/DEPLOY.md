@@ -27,14 +27,13 @@
 # 创建部署用户 todo（非 root 跑服务），SSH key 登录
 
 # ── Debian/Ubuntu 系 ──
-# apt update && apt install -y curl nginx certbot sqlite3 ffmpeg
+# apt update && apt install -y curl nginx certbot sqlite3
 
 # ── AlmaLinux/CentOS/Rocky（RHEL 系，当前生产实测：AlmaLinux）──
 sudo dnf install -y epel-release
 sudo dnf install -y curl nginx certbot python3-certbot-nginx sqlite
-# ffmpeg 不在 RHEL 系默认/EPEL 仓库，需另加 RPM Fusion（仅非 PCM 音频转码兜底用，可后装）：
-sudo dnf install -y --nogpgcheck https://download1.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm
-sudo dnf install -y ffmpeg
+# ffmpeg 无需系统安装：pyproject 的 imageio-ffmpeg 依赖在 uv sync 后自带静态 ffmpeg
+# （Windows/macOS 微信客户端不支持 PCM 录音，上传的 mp3 等格式由它转码后再送 ASR）
 
 # uv（两系通用，部署用户）
 curl -LsSf https://astral.sh/uv/install.sh | sh

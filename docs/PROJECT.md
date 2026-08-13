@@ -134,7 +134,7 @@ backend/
 失败策略：
 
 - 录音过短（`MIN_AUDIO_SECONDS` 默认 0.5s）→ 400 `recording_too_short`；超过上限 → 400 `recording_too_long`。
-- 非 PCM 格式（mp3/m4a 等）：后端自动 ffmpeg 转码为 16k/mono/s16le；未安装 ffmpeg 返回 415。
+- 非 PCM 格式（mp3/m4a 等，PC 端微信不支持 PCM 录音，必走此路径）：后端自动 ffmpeg 转码为 16k/mono/s16le；ffmpeg 由系统提供或 imageio-ffmpeg 内置二进制兜底，两者都没有才返回 415。
 - 火山引擎检测到静音/空音频（状态码 20000003）→ 返回 `200` 和空 transcript，不写入数据库。
 - 火山引擎 ASR 其他失败：返回 502，不写入数据库。
 - transcript 中没有可新增待办：返回 `200` 和 `items=[]`，前端展示”未添加待办”。
@@ -291,6 +291,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 支持 iOS 客户端，仍由后端统一调用 ASR/LLM。
 - 增加账号绑定设计，为多端同步做准备。
 - 增加任务搜索、过期查看和完成项折叠。
+- 语音链路优化：后端把 mp3 直传火山 ASR，跳过 ffmpeg 转码。
 
 长期：
 

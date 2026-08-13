@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import imageio_ffmpeg
 from fastapi import UploadFile, status
 
 from app.config import get_settings
@@ -48,7 +49,11 @@ async def read_upload_as_pcm(upload: UploadFile) -> bytes:
     if filename.endswith((".pcm", ".raw")) or content_type in PCM_CONTENT_TYPES:
         return _validate_pcm(raw)
 
-    ffmpeg = shutil.which("ffmpeg")
+    # 系统 ffmpeg 优先，否则用 imageio-ffmpeg 内置的静态二进制
+    try:
+        ffmpeg = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
+    except RuntimeError:
+        ffmpeg = None
     if ffmpeg is None:
         raise_api_error(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,

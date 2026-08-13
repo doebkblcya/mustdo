@@ -5,10 +5,15 @@ import base64
 import json
 import os
 import struct
+import subprocess
 import sys
+import tempfile
 import unittest
+import wave
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import imageio_ffmpeg
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 if ROOT not in sys.path:
@@ -37,6 +42,35 @@ class FakeUpload:
 
     async def read(self) -> bytes:
         return self.raw
+
+
+def _make_mp3(seconds: float) -> bytes:
+    """用 imageio-ffmpeg 内置 ffmpeg 从 WAV 静音生成测试 mp3。"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        wav_path = os.path.join(tmpdir, "in.wav")
+        mp3_path = os.path.join(tmpdir, "out.mp3")
+        with wave.open(wav_path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(_pcm_silence(seconds))
+        subprocess.run(
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                wav_path,
+                mp3_path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        with open(mp3_path, "rb") as f:
+            return f.read()
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +231,13 @@ class AudioUploadTests(unittest.TestCase):
         self.assertEqual(raised.exception.detail["code"], "recording_too_long")
         max_seconds = get_settings().max_audio_seconds
         self.assertEqual(raised.exception.detail["message"], f"录音超过 {max_seconds:.0f} 秒")
+
+    def test_mp3_upload_is_transcoded_to_pcm(self) -> None:
+        upload = FakeUpload(_make_mp3(2.0), "recording.mp3", "audio/mpeg")
+
+        result = asyncio.run(read_upload_as_pcm(upload))
+        duration = len(result) / PCM_BYTES_PER_SECOND
+        self.assertAlmostEqual(duration, 2.0, delta=0.2)
 
 
 # ---------------------------------------------------------------------------

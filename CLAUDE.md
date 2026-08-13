@@ -33,7 +33,7 @@ mustdo/
 
 ### 技术栈
 FastAPI（同步路由）+ SQLite（WAL，`check_same_thread=False`）+ httpx + Pydantic v2 + uv。
-pyproject 中 `websockets` 是讯飞流式方案遗留依赖（未使用，可清理）。
+pyproject 中 `websockets` 是讯飞流式方案遗留依赖（未使用，可清理）。`imageio-ffmpeg` 提供内置静态 ffmpeg，用于非 PCM 音频转码（Windows/macOS 微信客户端不支持 PCM 录音，会上传 mp3）。
 
 ### 数据库 Schema
 
@@ -89,7 +89,7 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 `{"code": "machine_code", "message": "中文提示", "details": null}`。code 稳定、message 可展示。校验错误统一 `validation_error`（422）。
 
 ### 语音/AI 数据流
-小程序录音（16kHz/mono/PCM，上限 60s，下限 `MIN_AUDIO_SECONDS`，太短返回 `recording_too_short`）→ `wx.uploadFile` → 后端 PCM→WAV→base64→火山引擎极速版 HTTP POST → transcript → DeepSeek JSON Output → 校验入库。失败不写数据库。静音音频（火山 20000003）返回 200 + 空 transcript，不报错。非 PCM 格式上传走 ffmpeg 转码（`services/audio.py`，未装 ffmpeg 返回 415）。
+小程序录音（16kHz/mono/PCM，上限 60s，下限 `MIN_AUDIO_SECONDS`，太短返回 `recording_too_short`）→ `wx.uploadFile` → 后端 PCM→WAV→base64→火山引擎极速版 HTTP POST → transcript → DeepSeek JSON Output → 校验入库。失败不写数据库。静音音频（火山 20000003）返回 200 + 空 transcript，不报错。非 PCM 格式上传走 ffmpeg 转码（`services/audio.py`，系统 ffmpeg 优先、缺失时用 imageio-ffmpeg 内置二进制，两者都没有才返回 415）。
 
 ### 火山 ASR
 端点 `POST .../api/v3/auc/bigmodel/recognize/flash`，资源 `volc.bigasr.auc_turbo`，同步接口。认证优先新版 `X-Api-Key`（`VOLC_API_KEY`），缺失时回退旧版 `X-Api-App-Key` + `X-Api-Access-Key`。
