@@ -368,7 +368,7 @@ Page({
       const dayNum = i - lead + 1;
       const inMonth = dayNum >= 1 && dayNum <= daysInMonth;
       if (!inMonth) {
-        cells.push({ key: "c" + i, dateStr: "", day: 0, inMonth: false, beforeToday: false, isToday: false, hasDot: false, isSelected: false });
+        cells.push({ key: "c" + i, dateStr: "", day: 0, inMonth: false, beforeToday: false, hasDot: false, isSelected: false });
         continue;
       }
       const mm = month + 1 < 10 ? "0" + (month + 1) : "" + (month + 1);
@@ -381,7 +381,6 @@ Page({
         day: dayNum,
         inMonth: true,
         beforeToday: beforeToday,
-        isToday: dateStr === today,
         hasDot: !beforeToday && !!dotSet[dateStr],
         isSelected: dateStr === selected,
       });
