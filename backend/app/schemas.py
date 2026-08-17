@@ -88,6 +88,8 @@ class TranscriptionResponse(BaseModel):
 
 class AiCreateRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=4000)
+    # 输入来源：voice=语音转写（默认，兼容旧客户端），text=键盘输入
+    source: Literal["voice", "text"] = "voice"
 
     @field_validator("transcript")
     @classmethod

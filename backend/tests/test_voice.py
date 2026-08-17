@@ -245,6 +245,22 @@ class AudioUploadTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+class AiCreateRequestSchemaTests(unittest.TestCase):
+    def test_source_defaults_to_voice(self) -> None:
+        req = AiCreateRequest(transcript="明天买菜")
+        self.assertEqual(req.source, "voice")
+
+    def test_source_accepts_text(self) -> None:
+        req = AiCreateRequest(transcript="明天买菜", source="text")
+        self.assertEqual(req.source, "text")
+
+    def test_source_rejects_unknown_value(self) -> None:
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            AiCreateRequest(transcript="明天买菜", source="keyboard")
+
+
 class AiTodoRouteTests(unittest.TestCase):
     def test_no_todo_parse_result_returns_empty_success_response(self) -> None:
         async def no_todo(_transcript):

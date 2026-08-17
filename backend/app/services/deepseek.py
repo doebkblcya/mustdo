@@ -91,7 +91,7 @@ def _system_prompt(today: date) -> str:
     three_days_later = today + timedelta(days=3)
 
     return f"""
-你是一个待办事项解析器。把用户语音转写文本拆分成待办数组。只输出 JSON。
+你是一个待办事项解析器。把用户输入文本（语音转写或键盘输入）拆分成待办数组。只输出 JSON。
 
 当前日期：{today.isoformat()}（周{weekday_cn}），时区 Asia/Shanghai
 

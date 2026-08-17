@@ -109,8 +109,11 @@ function deleteTodo(id) {
   return request("/api/todos/" + id, { method: "DELETE" });
 }
 
-function createTodosFromTranscript(transcript) {
-  return request("/api/todos/ai", { method: "POST", data: { transcript: transcript } });
+function createTodosFromTranscript(transcript, source) {
+  return request("/api/todos/ai", {
+    method: "POST",
+    data: { transcript: transcript, source: source || "voice" }
+  });
 }
 
 function uploadVoice(filePath) {

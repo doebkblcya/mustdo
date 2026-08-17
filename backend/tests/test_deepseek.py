@@ -82,6 +82,19 @@ class DeepSeekParserTests(unittest.TestCase):
         self.assertEqual(FakeDeepSeekClient.last_json["thinking"], {"type": "disabled"})
         self.assertEqual(FakeDeepSeekClient.last_json["response_format"], {"type": "json_object"})
 
+    def test_system_prompt_mentions_keyboard_input(self) -> None:
+        today = today_date().isoformat()
+        FakeDeepSeekClient.response_content = (
+            f'{{"items":[{{"content":"买菜","due_date":"{today}","due_time":null}}]}}'
+        )
+        FakeDeepSeekClient.last_json = None
+
+        with patch("app.services.deepseek.httpx.AsyncClient", FakeDeepSeekClient):
+            asyncio.run(parse_todos_with_deepseek("今天买菜"))
+
+        system_content = FakeDeepSeekClient.last_json["messages"][0]["content"]
+        self.assertIn("语音转写或键盘输入", system_content)
+
     def test_loads_deepseek_json_accepts_fenced_json(self) -> None:
         self.assertEqual(_loads_deepseek_json('```json\n{"items":[]}\n```'), {"items": []})
 

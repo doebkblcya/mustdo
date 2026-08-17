@@ -82,9 +82,10 @@ async def create_todos_from_transcript(
     except NoTodoParsedError as exc:
         response.status_code = status.HTTP_200_OK
         logger.info(
-            "todos_ai_no_items elapsed_ms=%s transcript_chars=%s",
+            "todos_ai_no_items elapsed_ms=%s transcript_chars=%s source=%s",
             _elapsed_ms(started_at),
             len(payload.transcript),
+            payload.source,
         )
         return AiCreateResponse(
             transcript=payload.transcript,
@@ -93,9 +94,10 @@ async def create_todos_from_transcript(
         )
     except DeepSeekParseError as exc:
         logger.warning(
-            "todos_ai_parse_failed elapsed_ms=%s transcript_chars=%s error=%s detail=%s",
+            "todos_ai_parse_failed elapsed_ms=%s transcript_chars=%s source=%s error=%s detail=%s",
             _elapsed_ms(started_at),
             len(payload.transcript),
+            payload.source,
             exc,
             exc.detail,
         )
@@ -118,11 +120,12 @@ async def create_todos_from_transcript(
         )
 
     logger.info(
-        "todos_ai_done total_ms=%s parse_ms=%s save_ms=%s transcript_chars=%s items=%s",
+        "todos_ai_done total_ms=%s parse_ms=%s save_ms=%s transcript_chars=%s source=%s items=%s",
         _elapsed_ms(started_at),
         round((parsed_at - started_at) * 1000) if parsed_at is not None else None,
         round((perf_counter() - parsed_at) * 1000) if parsed_at is not None else None,
         len(payload.transcript),
+        payload.source,
         len(created),
     )
     return AiCreateResponse(transcript=payload.transcript, items=created)

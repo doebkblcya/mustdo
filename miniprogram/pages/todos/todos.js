@@ -11,6 +11,14 @@ const VIEW_META = {
   upcoming: "后续",
 };
 
+// "2026-08-20" → "8月20日"
+function formatDateCN(dateStr) {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  return parseInt(parts[1], 10) + "月" + parseInt(parts[2], 10) + "日";
+}
+
 // Swipe-to-reveal
 const SWIPE_ZONE = 80; // px — pin / delete zone width
 const SWIPE_THRESHOLD = 40; // px — commit threshold
@@ -51,8 +59,14 @@ Page({
     voiceCancelHover: false,
     voiceMessage: "",
     transcript: "",
-    voiceButtonScale: 1,
-    voicePanelOpacity: 0,
+
+    // Composer bar (keyboard ⇄ voice)
+    composerMode: "keyboard",
+    composerText: "",
+    composerSubmitting: false,
+    composerPlaceholder: "输入文字或按住说话",
+    composerLift: 0, // px — lift above keyboard
+    isIOS: false,    // iOS uses keyboard confirm key, no in-bar send arrow
 
     // Edit sheet
     editVisible: false,
@@ -68,13 +82,20 @@ Page({
     // Tab pill
     pillX: 0,
     pillWidth: 0,
+
+    // Calendar (expandable on 后续 tab)
+    calendarVisible: false,
+    calHeight: 0,
+    calTitle: "",
+    calYear: null,
+    calMonth: null,
+    calendarWeeks: [],
+    selectedDate: "",
   },
 
   // ---- Animation instances (not in data to avoid setData overhead) ----
   _pillSpring: null,
   _sheetSpring: null,
-  _voiceSpring: null,
-  _voicePanelSpring: null,
   _maskSpring: null,
   _checkSprings: {},
 
@@ -88,6 +109,11 @@ Page({
   _tabsMeasured: false,
   _swipeState: null,
   _swipeSpring: null,
+  _calSpring: null,
+
+  // ---- Composer hold-to-talk ----
+  _composerHoldTimer: null,
+  _composerHoldTriggered: false,
 
   // ---- Voice ----
   recorder: null,
@@ -107,11 +133,24 @@ Page({
     }
     this.setData({ user: api.getStoredUser() });
     this.setupRecorder();
+
+    // iOS keeps the send action on the keyboard confirm key (no in-bar arrow)
+    const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
+    this.setData({ isIOS: device.platform === "ios" });
+
+    // Pin the fixed composer bar above the keyboard
+    if (wx.onKeyboardHeightChange) {
+      wx.onKeyboardHeightChange((res) => {
+        this.setData({ composerLift: res.height > 0 ? -res.height : 0 });
+      });
+    }
+
     this.loadTodos();
     this._measureTabs();
   },
 
   onUnload() {
+    if (wx.offKeyboardHeightChange) wx.offKeyboardHeightChange();
     this._stopAllSprings();
   },
 
@@ -170,6 +209,10 @@ Page({
       const todos = await api.listTodos();
       this.setData({ todos, loading: false, todayDate: todos.today_date || "" });
       this.applyActiveView(this.data.activeView);
+      this._buildCalendar();
+      if (this.data.selectedDate) {
+        this.applyDateFilter(this.data.selectedDate);
+      }
     } catch (error) {
       if (error.statusCode === 401) {
         api.clearSession();
@@ -201,9 +244,185 @@ Page({
 
   switchView(event) {
     const view = event.currentTarget.dataset.view;
+    if (view === this.data.activeView) {
+      // Re-tap the active tab: 后续 toggles the calendar
+      if (view === "upcoming") this._toggleCalendar();
+      return;
+    }
+    // Switching to another tab — collapse calendar & clear date filter
+    this._collapseCalendar();
+    this.setData({ selectedDate: "" });
     this.applyActiveView(view);
     const tabIndex = Object.keys(VIEW_META).indexOf(view);
     this._animatePill(tabIndex);
+  },
+
+  // ========== Calendar (后续 tab) ==========
+
+  _toggleCalendar() {
+    if (this.data.calendarVisible) {
+      this._collapseCalendar();
+    } else {
+      this._expandCalendar();
+    }
+  },
+
+  _expandCalendar() {
+    if (this.data.calendarVisible) return;
+    this.setData({ calendarVisible: true });
+    var self = this;
+    setTimeout(function() {
+      const query = wx.createSelectorQuery();
+      query.select(".calendar").boundingClientRect();
+      query.exec(function(res) {
+        const rect = res && res[0];
+        const target = (rect && rect.height) || 320;
+        if (self._calSpring) self._calSpring.stop();
+        self._calSpring = spring(target, {
+          damping: 0.8,
+          response: 0.32,
+          onUpdate: function(value) {
+            self.setData({ calHeight: value });
+          },
+        });
+      });
+    }, 80);
+  },
+
+  _collapseCalendar() {
+    if (!this.data.calendarVisible) return;
+    if (this._calSpring) this._calSpring.stop();
+    var self = this;
+    this._calSpring = spring(0, {
+      damping: 0.9,
+      response: 0.26,
+      onUpdate: function(value) {
+        self.setData({ calHeight: value });
+      },
+      onComplete: function() {
+        self.setData({ calendarVisible: false, calHeight: 0 });
+      },
+    });
+  },
+
+  // Date set of days (>= today) that still have pending todos → dot marks
+  _collectDotDates() {
+    const todos = this.data.todos;
+    const groups = todos && todos.groups ? todos.groups : {};
+    const today = this.data.todayDate || "";
+    const set = {};
+    for (const key of ["today", "tomorrow", "upcoming"]) {
+      for (const item of groups[key] || []) {
+        if (item.status === "pending" && item.due_date && (!today || item.due_date >= today)) {
+          set[item.due_date] = true;
+        }
+      }
+    }
+    return set;
+  },
+
+  // Build the 6×7 grid for calYear/calMonth (Monday-first), default = current month
+  _buildCalendar() {
+    const today = this.data.todayDate || "";
+    if (!today) return;
+
+    let year = this.data.calYear;
+    let month = this.data.calMonth;
+    if (!year) {
+      const parts = today.split("-").map(Number);
+      year = parts[0];
+      month = parts[1] - 1; // 0-based
+    }
+
+    const dotSet = this._collectDotDates();
+    const lead = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const selected = this.data.selectedDate;
+
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const dayNum = i - lead + 1;
+      const inMonth = dayNum >= 1 && dayNum <= daysInMonth;
+      if (!inMonth) {
+        cells.push({ key: "c" + i, dateStr: "", day: 0, inMonth: false, beforeToday: false, isToday: false, hasDot: false, isSelected: false });
+        continue;
+      }
+      const mm = month + 1 < 10 ? "0" + (month + 1) : "" + (month + 1);
+      const dd = dayNum < 10 ? "0" + dayNum : "" + dayNum;
+      const dateStr = year + "-" + mm + "-" + dd;
+      const beforeToday = dateStr < today;
+      cells.push({
+        key: "c" + i,
+        dateStr: dateStr,
+        day: dayNum,
+        inMonth: true,
+        beforeToday: beforeToday,
+        isToday: dateStr === today,
+        hasDot: !beforeToday && !!dotSet[dateStr],
+        isSelected: dateStr === selected,
+      });
+    }
+
+    const weeks = [];
+    for (let w = 0; w < 6; w++) {
+      weeks.push({ weekIndex: "w" + w, days: cells.slice(w * 7, w * 7 + 7) });
+    }
+
+    this.setData({
+      calYear: year,
+      calMonth: month,
+      calTitle: year + "年" + (month + 1) + "月",
+      calendarWeeks: weeks,
+    });
+  },
+
+  shiftCalendarMonth(event) {
+    const delta = Number(event.currentTarget.dataset.delta);
+    let month = this.data.calMonth + delta;
+    let year = this.data.calYear;
+    if (month < 0) { month = 11; year -= 1; }
+    if (month > 11) { month = 0; year += 1; }
+    this.setData({ calMonth: month, calYear: year });
+    this._buildCalendar();
+  },
+
+  onCalDayTap(event) {
+    const ds = event.currentTarget.dataset;
+    const date = ds.date;
+    if (!ds.inmonth || ds.before || !date) return;
+    // Tapping today = jump to the 今天 tab
+    if (date === this.data.todayDate) {
+      this._collapseCalendar();
+      this.applyActiveView("today");
+      this._animatePill(Object.keys(VIEW_META).indexOf("today"));
+      return;
+    }
+    this.setData({ selectedDate: date });
+    this._buildCalendar();
+    this.applyDateFilter(date);
+  },
+
+  applyDateFilter(dateStr) {
+    const todos = this.data.todos;
+    const groups = todos && todos.groups ? todos.groups : {};
+    const all = [].concat(groups.today || [], groups.tomorrow || [], groups.upcoming || []);
+    const items = all
+      .filter((t) => t.due_date === dateStr)
+      .map((item) => ({
+        ...item,
+        pinned: Boolean(item.pinned),
+        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+        checkScale: 1,
+        deleting: false,
+      }))
+      .sort(_todoSort);
+    this.setData({ items, viewTitle: formatDateCN(dateStr), viewDate: dateStr });
+  },
+
+  clearDateFilter() {
+    this.setData({ selectedDate: "" });
+    this._buildCalendar();
+    this.applyActiveView(this.data.activeView);
   },
 
   // ========== Todo actions ==========
@@ -223,6 +442,7 @@ Page({
     );
     this.setData({ items });
     this.patchGroupItem(id, { status: newStatus });
+    this._buildCalendar(); // pending ⇄ done changes the dot marks
 
     wx.vibrateShort({ type: "light" });
 
@@ -457,6 +677,7 @@ Page({
         items: prevItems.filter(function(item) { return item.id !== id; }),
         todos: self.removeFromGroups(prevTodos, id),
       });
+      self._buildCalendar(); // dot marks refresh after removal
       wx.vibrateShort({ type: 'medium' });
       api.deleteTodo(id).catch(function() {
         // Already removed from UI
@@ -683,6 +904,117 @@ Page({
     }
   },
 
+  // ========== Composer bar (keyboard ⇄ voice) ==========
+
+  onComposerToggle() {
+    if (this.data.voicePhase === "recording") return;
+    if (this.data.composerSubmitting) return;
+    const next = this.data.composerMode === "keyboard" ? "voice" : "keyboard";
+    if (next === "voice") wx.hideKeyboard();
+    this.setData({ composerMode: next });
+  },
+
+  onComposerTouchStart(event) {
+    // Fallback stop: a recording may have started while the permission
+    // dialog stole touchend — the next touch on the bar stops it.
+    if (this.data.voicePhase === "recording") {
+      this.stopVoice();
+      return;
+    }
+    if (this.data.voicePhase !== "idle") return;
+
+    const touch = event.touches && event.touches[0];
+    if (touch) this._voiceTouchStartY = touch.clientY;
+
+    if (this.data.composerMode === "voice") {
+      // Voice mode: press-to-talk immediately
+      this.startVoice();
+      return;
+    }
+
+    // Keyboard mode: long-press on an EMPTY input records voice;
+    // short-press lets the input focus normally.
+    if (this.data.composerText) return;
+    if (this._composerHoldTimer) clearTimeout(this._composerHoldTimer);
+    this._composerHoldTriggered = false;
+    this._composerHoldTimer = setTimeout(() => {
+      this._composerHoldTimer = null;
+      if (this.data.voicePhase !== "idle") return;
+      if (this.data.composerText) return;
+      wx.hideKeyboard(); // input may already be focused — drop the keyboard
+      this._composerHoldTriggered = true;
+      this.startVoice();
+    }, 350);
+  },
+
+  onComposerTouchMove(event) {
+    if (this.data.voicePhase === "recording") {
+      this.onVoiceButtonMove(event);
+    }
+  },
+
+  onComposerTouchEnd() {
+    if (this._composerHoldTimer) {
+      clearTimeout(this._composerHoldTimer);
+      this._composerHoldTimer = null;
+    }
+    if (this._composerHoldTriggered) {
+      this._composerHoldTriggered = false;
+      this.stopVoice();
+      return;
+    }
+    if (this.data.voicePhase === "recording") {
+      this.stopVoice();
+    }
+  },
+
+  onComposerTouchCancel() {
+    this.onComposerTouchEnd();
+  },
+
+  onComposerInput(event) {
+    this.setData({ composerText: event.detail.value });
+  },
+
+  async submitComposerText() {
+    if (this.data.composerSubmitting) return;
+    const content = this.data.composerText.trim();
+    if (!content) {
+      wx.showToast({ title: "内容不能为空", icon: "none" });
+      return;
+    }
+    wx.hideKeyboard();
+
+    // Clear the bar — the full-screen result overlay takes over
+    this.setData({
+      composerSubmitting: true,
+      composerText: "",
+      voicePhase: "parsing",
+      voiceMessage: "正在解析待办…",
+      transcript: content,
+    });
+
+    try {
+      const result = await api.createTodosFromTranscript(content, "text");
+      if (!result.items || result.items.length === 0) {
+        this.failVoice(result.message || "未添加待办");
+        return;
+      }
+      wx.vibrateShort({ type: "light" });
+      this.setData({
+        voicePhase: "done",
+        voiceMessage: `已添加 ${result.items.length} 项`,
+      });
+      await this.loadTodos();
+      setTimeout(() => this._measureTabs(), 200);
+      this._dismissVoiceResult();
+    } catch (error) {
+      this.failVoice(error.message || "解析失败");
+    } finally {
+      this.setData({ composerSubmitting: false });
+    }
+  },
+
   // ========== Voice input ==========
 
   async logout() {
@@ -737,7 +1069,7 @@ Page({
     });
   },
 
-  async startVoice(event) {
+  async startVoice() {
     if (this.data.voicePhase !== "idle") return;
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
@@ -757,10 +1089,6 @@ Page({
     if (!this._voicePermissionPending) return;
     this._voicePermissionPending = false;
 
-    // Capture touch position
-    const touch = (event && event.touches && event.touches[0]) ? event.touches[0] : null;
-    this._voiceTouchStartY = touch ? touch.clientY : 0;
-
     // ── Visual feedback ──
     this.setData({
       voicePhase: "recording",
@@ -768,8 +1096,6 @@ Page({
       voiceMessage: "",
       transcript: "",
     });
-    this._animateVoiceButton(0.97);
-    this._animateVoicePanel(true);
     wx.vibrateShort({ type: "heavy" });
 
     // ── Start local recording ──
@@ -799,14 +1125,6 @@ Page({
     }
   },
 
-  onVoiceButtonTap() {
-    // Fallback: when system permission dialog steals touchend,
-    // a tap on the recording button acts as stop
-    if (this.data.voicePhase === "recording") {
-      this.stopVoice();
-    }
-  },
-
   stopVoice() {
     // Permission check still pending — cancel it, startVoice will abort
     if (this._voicePermissionPending) {
@@ -822,10 +1140,6 @@ Page({
     // Stop recorder
     this.stopRecorder();
 
-    // Animate button back
-    this._animateVoiceButton(1);
-    this._animateVoicePanel(false);
-
     if (cancelled) {
       // Cancel — discard everything
       this.setData({ voicePhase: "idle", voiceCancelHover: false });
@@ -838,17 +1152,6 @@ Page({
       voiceCancelHover: false,
       voiceMessage: "正在识别语音…",
       transcript: "",
-    });
-  },
-
-  _animateVoiceButton(target) {
-    if (this._voiceSpring) this._voiceSpring.stop();
-    this._voiceSpring = spring(target, {
-      damping: 0.8,
-      response: target < 1 ? 0.15 : 0.25,
-      onUpdate: (value) => {
-        this.setData({ voiceButtonScale: value });
-      },
     });
   },
 
@@ -873,27 +1176,6 @@ Page({
       this.recorder.stop();
     } catch (error) {
       this.recorderStarted = false;
-    }
-  },
-
-  _animateVoicePanel(show) {
-    if (this._voicePanelSpring) this._voicePanelSpring.stop();
-    if (show) {
-      this._voicePanelSpring = spring(1, {
-        damping: 0.8,
-        response: 0.25,
-        onUpdate: (value) => {
-          this.setData({ voicePanelOpacity: value });
-        },
-      });
-    } else {
-      this._voicePanelSpring = spring(0, {
-        damping: 1.0,
-        response: 0.2,
-        onUpdate: (value) => {
-          this.setData({ voicePanelOpacity: value });
-        },
-      });
     }
   },
 
@@ -933,14 +1215,10 @@ Page({
   },
 
   failVoice(message) {
-    this._animateVoiceButton(1);
-
     this.setData({
       voicePhase: "error",
       voiceMessage: message,
     });
-    this._animateVoicePanel(false);
-
     this._dismissVoiceResult();
   },
 
@@ -948,8 +1226,8 @@ Page({
 
   _stopAllSprings() {
     const springs = [
-      this._pillSpring, this._sheetSpring, this._voiceSpring,
-      this._voicePanelSpring, this._maskSpring, this._swipeSpring,
+      this._pillSpring, this._sheetSpring, this._voiceSpring, this._maskSpring,
+      this._swipeSpring, this._calSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });
     Object.values(this._checkSprings).forEach((s) => { if (s) s.stop(); });

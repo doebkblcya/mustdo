@@ -4,11 +4,11 @@
 
 ## 产品定位
 
-Mustdo 是一个轻量语音待办工具。第一版只让语音承担“新增待办”的职责，修改、删除、完成和改时间全部由用户在界面中手动完成。
+Mustdo 是一个轻量语音待办工具。第一版只让语音承担“新增待办”的职责，修改、删除、完成和改时间全部由用户在界面中手动完成。文字输入与语音共用同一条“新增待办”链路，只是输入方式不同。
 
 核心原则：
 
-- 主流程要短：按住说话，松手后自动转写、解析、入库。
+- 主流程要短：按住说话 / 键盘输入，松手或回车后自动转写、解析、入库。
 - 语音不做危险操作：不通过 AI 修改或删除已有事项。
 - AI 结果不做确认弹窗：解析过程可见，失败不写入数据。
 - 多端优先：微信小程序是第一客户端，后续 iOS 复用同一套后端 API。
@@ -131,6 +131,8 @@ backend/
 9. 前端刷新待办并展示已添加结果。
 ```
 
+文字输入走同一链路：小程序键盘输入 → 直接 `POST /api/todos/ai`（`source=text`）→ DeepSeek 解析 → 入库。语音路径先经 ASR 得到 transcript 再调用 `/api/todos/ai`（`source=voice`，默认值，兼容旧客户端）。
+
 失败策略：
 
 - 录音过短（`MIN_AUDIO_SECONDS` 默认 0.5s）→ 400 `recording_too_short`；超过上限 → 400 `recording_too_long`。
@@ -167,7 +169,7 @@ ASR 协议：
 - `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态、置顶
 - `DELETE /api/todos/{id}`：软删除待办
 - `POST /api/voice/transcriptions`：上传音频文件并返回转写文本
-- `POST /api/todos/ai`：将转写文本解析并新增待办
+- `POST /api/todos/ai`：将文本解析并新增待办（`source`：`voice` 默认 / `text` 键盘输入）
 
 ### 错误模型
 
@@ -221,6 +223,8 @@ request 合法域名：https://mustdo.doebkblcya.com
 
 语音链路：小程序用 `wx.getRecorderManager` 采集 `16kHz/mono/PCM` 音频（上限 60s，配置在 `config.js`），松手后通过 `wx.uploadFile` 一次性上传到 `POST /api/voice/transcriptions`。后端将 PCM 封装 WAV header 后调用火山引擎极速版 ASR，返回转写文本。
 
+输入链路：底部右侧麦克风圆钮按住说话；左侧键盘圆钮弹出「快速添加」弹层，输入文本后回车/点发送，直接 `POST /api/todos/ai`（`source=text`），解析、入库、反馈与语音完全一致。录制语音时键盘按钮置灰禁用，录音中在麦克风按钮上方显示「松开完成/松开取消」胶囊提示。
+
 ### 滑动交互
 
 卡片支持左右滑动操作：
@@ -250,9 +254,10 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 统一错误模型 `{code, message, details}`（含 422 校验明细），`/api/health` 健康检查。
 - 录音时长校验（下限 0.5s / 上限 60s）+ 非 PCM 格式 ffmpeg 转码。
 - 微信小程序（原生框架），含滑动交互和卡片状态系统、无障碍适配（大字号/旧安卓降级动画）。
-- 小程序按住说话、松手 HTTP POST 上传（60s 上限）。
+- 小程序按住说话、松手 HTTP POST 上传（60s 上限），底部双悬浮圆钮（键盘 + 麦克风）。
+- 小程序文字输入：键盘按钮弹出快速添加层，自动聚焦、回车发送，与语音共用 AI 解析链路与结果反馈。
 - 火山引擎录音文件极速版 ASR 封装（新旧版控制台认证兼容）。
-- DeepSeek JSON 解析封装（few-shot prompt + 动态日期，容错 fenced JSON 包裹）。
+- DeepSeek JSON 解析封装（few-shot prompt + 动态日期，容错 fenced JSON 包裹，措辞兼容语音转写与键盘输入）。
 - 邀请码创建、查看、清空脚本。
 - 后端单元测试 5 个文件 20 个用例。
 
@@ -275,6 +280,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 没有忘记密码和管理员后台。
 - 没有用户资料、账号绑定或多设备管理。
 - 语音只支持新增，不支持语音修改或删除。
+- 微信开发者工具/PC 端微信不支持 PCM 录音，录出文件为 mp3 等封装格式：后端经 ffmpeg 自动转码后可正常识别，但该文件与移动端 PCM 格式不同，只能在工具内播放调试，无法直接跨端播放。
 - ASR 和 LLM 依赖外部服务可用性。
 - 本地 SQLite 适合 MVP 和小范围测试，后续多用户规模扩大时需要评估迁移。
 

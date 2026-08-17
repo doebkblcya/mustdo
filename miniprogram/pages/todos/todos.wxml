@@ -22,7 +22,49 @@
     </button>
     <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">
       <text class="tab-label">后续</text>
+      <view class="tab-caret {{calendarVisible ? 'tab-caret--up' : ''}}"></view>
     </button>
+  </view>
+
+  <!-- Calendar (expandable on 后续 tab) -->
+  <view wx:if="{{calendarVisible}}" class="calendar-wrap" style="height: {{calHeight}}px;">
+    <view class="calendar">
+      <view class="cal-header">
+        <view class="cal-nav" data-delta="-1" bindtap="shiftCalendarMonth">
+          <view class="cal-arrow cal-arrow--left"></view>
+        </view>
+        <text class="cal-title">{{calTitle}}</text>
+        <view class="cal-nav" data-delta="1" bindtap="shiftCalendarMonth">
+          <view class="cal-arrow cal-arrow--right"></view>
+        </view>
+      </view>
+      <view class="cal-weekdays">
+        <text wx:for="{{['一','二','三','四','五','六','日']}}" wx:key="*this" class="cal-weekday">{{item}}</text>
+      </view>
+      <view class="cal-grid">
+        <view wx:for="{{calendarWeeks}}" wx:for-item="week" wx:key="weekIndex" class="cal-week">
+          <view
+            wx:for="{{week.days}}"
+            wx:for-item="cell"
+            wx:key="key"
+            class="cal-day {{cell.inMonth ? '' : 'cal-day--dim'}} {{cell.beforeToday ? 'cal-day--past' : ''}} {{cell.isToday ? 'cal-day--today' : ''}} {{cell.isSelected ? 'cal-day--selected' : ''}}"
+            data-date="{{cell.dateStr}}"
+            data-before="{{cell.beforeToday}}"
+            data-inmonth="{{cell.inMonth}}"
+            bindtap="onCalDayTap"
+          >
+            <text class="cal-day-num">{{cell.inMonth ? cell.day : ''}}</text>
+            <view wx:if="{{cell.hasDot}}" class="cal-dot"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- Date filter chip -->
+  <view wx:if="{{selectedDate}}" class="filter-chip" bindtap="clearDateFilter">
+    <text class="filter-chip-date">{{viewTitle}}</text>
+    <text class="filter-chip-all">· 查看全部</text>
   </view>
 
   <view class="todo-list">
@@ -47,7 +89,8 @@
 
     <!-- Empty state -->
     <view wx:elif="{{items.length === 0}}" class="empty-state">
-      <view class="empty-line"></view>
+      <text wx:if="{{selectedDate}}" class="empty-title">这一天没有待办</text>
+      <view wx:else class="empty-line"></view>
     </view>
 
     <!-- Todo items -->
@@ -58,7 +101,7 @@
         class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}"
       >
         <view class="swipe-zone swipe-zone--pin">
-          <view class="swipe-icon swipe-icon--pin"></view>
+          <view class="swipe-icon-img swipe-icon--pin"></view>
         </view>
         <view
           class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
@@ -83,11 +126,14 @@
             <text class="todo-meta">{{item.meta}}</text>
           </view>
           <button class="edit-btn" data-id="{{item.id}}" bindtap="editTodo">
-            <view class="swipe-icon swipe-icon--edit"></view>
+            <view class="edit-icon">
+              <view class="edit-frame"></view>
+              <view class="edit-stroke"></view>
+            </view>
           </button>
         </view>
         <view class="swipe-zone swipe-zone--delete">
-          <view class="swipe-icon swipe-icon--delete"></view>
+          <view class="swipe-icon-img swipe-icon--trash"></view>
         </view>
       </view>
     </block>
@@ -104,18 +150,73 @@
     </view>
   </view>
 
-  <!-- Hold-to-talk button -->
-  <button
-    class="voice-button {{voicePhase === 'recording' ? 'recording' : ''}} {{voiceCancelHover ? 'cancel' : ''}}"
-    style="transform: scale({{voiceButtonScale || 1}});"
-    bindtap="onVoiceButtonTap"
-    catchtouchstart="startVoice"
-    catchtouchmove="onVoiceButtonMove"
-    catchtouchend="stopVoice"
-    catchtouchcancel="stopVoice"
-  >
-    {{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成') : '按住说话'}}
-  </button>
+  <!-- Bottom composer bar: keyboard input ⇄ hold-to-talk voice -->
+  <view class="input-dock">
+    <view
+      class="composer-bar {{voicePhase === 'recording' ? 'recording' : ''}}"
+      style="transform: translateY({{composerLift}}px);"
+    >
+      <!-- Mode: short-press = focus text input, long-press (empty) = record voice -->
+      <view
+        wx:if="{{composerMode === 'keyboard'}}"
+        class="composer-field"
+      >
+        <input
+          class="composer-input"
+          value="{{composerText}}"
+          placeholder="{{composerPlaceholder}}"
+          placeholder-class="composer-placeholder"
+          confirm-type="send"
+          adjust-position="{{false}}"
+          maxlength="4000"
+          bindinput="onComposerInput"
+          bindconfirm="submitComposerText"
+          bindtouchstart="onComposerTouchStart"
+          bindtouchmove="onComposerTouchMove"
+          bindtouchend="onComposerTouchEnd"
+          bindtouchcancel="onComposerTouchCancel"
+        />
+      </view>
+      <view
+        wx:else
+        class="composer-field composer-field--voice"
+        bindtouchstart="onComposerTouchStart"
+        bindtouchmove="onComposerTouchMove"
+        bindtouchend="onComposerTouchEnd"
+        bindtouchcancel="onComposerTouchCancel"
+      >
+        <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成') : '按住说话'}}</text>
+      </view>
+
+      <!-- Mode toggle: mic (keyboard→voice) / keyboard (voice→keyboard) -->
+      <view
+        class="composer-toggle {{voicePhase === 'recording' ? 'disabled' : ''}}"
+        bindtap="onComposerToggle"
+      >
+        <!-- Voice mode indicator: sound-wave glyph -->
+        <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">
+          <view class="wave-arc wave-arc--1"></view>
+          <view class="wave-arc wave-arc--2"></view>
+          <view class="wave-arc wave-arc--3"></view>
+        </view>
+        <view wx:else class="kb-icon"></view>
+      </view>
+
+      <!-- Send: iOS uses keyboard confirm key; others get an arrow when non-empty -->
+      <view
+        wx:if="{{composerMode === 'keyboard' && !isIOS && composerText}}"
+        class="composer-send"
+        bindtap="submitComposerText"
+      >
+        <view class="send-icon"></view>
+      </view>
+
+      <!-- Recording hint capsule (above the bar; keyboard-mode hold only) -->
+      <view wx:if="{{voicePhase === 'recording' && composerMode === 'keyboard'}}" class="voice-hint {{voiceCancelHover ? 'cancel' : ''}}">
+        {{voiceCancelHover ? '松开取消' : '松开完成'}}
+      </view>
+    </view>
+  </view>
 
   <!-- Edit bottom sheet -->
   <view
