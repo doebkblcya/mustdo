@@ -1078,7 +1078,7 @@
   width: 8rpx;
   height: 8rpx;
   border-radius: 50%;
-  background: #ff9f0a;
+  background: #1d1d1f;
 }
 
 /* ================================================================
