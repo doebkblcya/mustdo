@@ -413,11 +413,15 @@ Page({
     const ds = event.currentTarget.dataset;
     const date = ds.date;
     if (!ds.inmonth || ds.before || !date) return;
-    // Tapping today = jump to the 今天 tab
-    if (date === this.data.todayDate) {
+    const today = this.data.todayDate;
+    const tomorrow = this.data.todos && this.data.todos.tomorrow_date;
+    // 今天/明天 → 跳到对应 tab，并清掉选中的日期
+    if (date === today || (tomorrow && date === tomorrow)) {
+      const view = date === today ? "today" : "tomorrow";
+      this.setData({ selectedDate: "" });
       this._collapseCalendar();
-      this.applyActiveView("today");
-      this._animatePill(Object.keys(VIEW_META).indexOf("today"));
+      this.applyActiveView(view);
+      this._animatePill(Object.keys(VIEW_META).indexOf(view));
       this._syncUpcomingLabel();
       return;
     }
