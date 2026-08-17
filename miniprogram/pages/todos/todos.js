@@ -430,7 +430,7 @@ Page({
     this.setData({ selectedDate: "" });
     this._buildCalendar();
     this.applyActiveView(this.data.activeView);
-    if (this.data.calendarVisible) this._fitCalendarHeight(); // footer 消失后重新贴合高度
+    this._collapseCalendar(); // 查看全部后收起日历
   },
 
   // ========== Todo actions ==========
