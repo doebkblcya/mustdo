@@ -286,6 +286,7 @@ Page({
 
   _expandCalendar() {
     if (this.data.calendarVisible) return;
+    this._buildCalendar(); // 展开时重建网格：选中标记/圆点跟随最新状态，避免脏高亮残留
     this.setData({ calendarVisible: true });
     this._syncUpcomingLabel(); // → 收起日历 / 查看全部
     this._fitCalendarHeight();
