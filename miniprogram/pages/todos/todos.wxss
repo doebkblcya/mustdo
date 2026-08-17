@@ -1080,9 +1080,10 @@
 }
 
 .cal-day--today .cal-day-num {
-  background: #1d1d1f;
-  color: #ffffff;
+  background: #e5e5ea;
+  color: #1d1d1f;
   font-weight: 600;
+  border-radius: 10rpx;
 }
 
 .cal-day--selected {
@@ -1106,53 +1107,44 @@
   background: #ff9f0a;
 }
 
-/* ---- Date filter chip ---- */
+/* ---- Calendar footer: 查看全部 ---- */
 
-.filter-chip {
+.cal-footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  align-self: flex-start;
-  margin: 0 0 20rpx;
-  padding: 12rpx 24rpx;
-  border-radius: 32rpx;
-  background: #fffaf3;
-  border: 1rpx solid rgba(255, 159, 10, 0.4);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  margin-top: 10rpx;
+  padding: 14rpx 0 2rpx;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.05);
   transition: transform 80ms ease-out;
 }
 
-.filter-chip:active {
-  transform: scale(0.96);
+.cal-footer:active {
+  transform: scale(0.97);
 }
 
-.filter-chip-date {
-  color: #1d1d1f;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.filter-chip-all {
+.cal-footer-text {
   color: #ff9f0a;
   font-size: 24rpx;
   font-weight: 500;
 }
 
-/* ---- Tab caret (后续 expandable hint) ---- */
+/* ---- Tab caret (后续 expandable hint) — thin chevron, matches 2.5rpx hairline icons ---- */
 
 .tab-caret {
-  margin-left: 4rpx;
-  width: 0;
-  height: 0;
-  border-left: 7rpx solid transparent;
-  border-right: 7rpx solid transparent;
-  border-top: 9rpx solid #8e8e93;
+  margin-left: 6rpx;
+  width: 16rpx;
+  height: 16rpx;
+  box-sizing: border-box;
+  border-right: 2.5rpx solid #8e8e93;
+  border-bottom: 2.5rpx solid #8e8e93;
+  border-radius: 2rpx;
+  transform: rotate(45deg); /* ⌄ chevron down */
   transition: transform 0.2s ease;
 }
 
 .tab-caret--up {
-  transform: rotate(180deg);
+  transform: rotate(225deg); /* ⌃ chevron up */
 }
 
 /* ================================================================

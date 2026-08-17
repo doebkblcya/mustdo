@@ -270,6 +270,12 @@ Page({
   _expandCalendar() {
     if (this.data.calendarVisible) return;
     this.setData({ calendarVisible: true });
+    this._fitCalendarHeight();
+  },
+
+  // Re-measure the calendar card and spring the wrapper height to match
+  // (used on expand, and after 查看全部 removes the footer)
+  _fitCalendarHeight() {
     var self = this;
     setTimeout(function() {
       const query = wx.createSelectorQuery();
@@ -400,6 +406,7 @@ Page({
     this.setData({ selectedDate: date });
     this._buildCalendar();
     this.applyDateFilter(date);
+    this._collapseCalendar(); // 选完日期收起，日期显示在 tab 上
   },
 
   applyDateFilter(dateStr) {
@@ -423,6 +430,7 @@ Page({
     this.setData({ selectedDate: "" });
     this._buildCalendar();
     this.applyActiveView(this.data.activeView);
+    if (this.data.calendarVisible) this._fitCalendarHeight(); // footer 消失后重新贴合高度
   },
 
   // ========== Todo actions ==========
