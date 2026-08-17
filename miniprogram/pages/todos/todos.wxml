@@ -153,7 +153,7 @@
       class="composer-bar {{voicePhase === 'recording' ? 'recording' : ''}}"
       style="transform: translateY({{composerLift}}px);"
     >
-      <!-- Mode: short-press = focus text input, long-press (empty) = record voice -->
+      <!-- Mode: hold-to-talk voice (default) ⇄ text input (via toggle) -->
       <view
         wx:if="{{composerMode === 'keyboard'}}"
         class="composer-field"
@@ -164,14 +164,12 @@
           placeholder="{{composerPlaceholder}}"
           placeholder-class="composer-placeholder"
           confirm-type="send"
+          focus="{{composerFocus}}"
           adjust-position="{{false}}"
           maxlength="4000"
           bindinput="onComposerInput"
           bindconfirm="submitComposerText"
-          bindtouchstart="onComposerTouchStart"
-          bindtouchmove="onComposerTouchMove"
-          bindtouchend="onComposerTouchEnd"
-          bindtouchcancel="onComposerTouchCancel"
+          bindblur="onComposerBlur"
         />
       </view>
       <view
@@ -182,21 +180,7 @@
         bindtouchend="onComposerTouchEnd"
         bindtouchcancel="onComposerTouchCancel"
       >
-        <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成') : '按住说话'}}</text>
-      </view>
-
-      <!-- Mode toggle: mic (keyboard→voice) / keyboard (voice→keyboard) -->
-      <view
-        class="composer-toggle {{voicePhase === 'recording' ? 'disabled' : ''}}"
-        bindtap="onComposerToggle"
-      >
-        <!-- Voice mode indicator: sound-wave glyph -->
-        <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">
-          <view class="wave-arc wave-arc--1"></view>
-          <view class="wave-arc wave-arc--2"></view>
-          <view class="wave-arc wave-arc--3"></view>
-        </view>
-        <view wx:else class="kb-icon"></view>
+        <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
       </view>
 
       <!-- Send: iOS uses keyboard confirm key; others get an arrow when non-empty -->
@@ -208,9 +192,18 @@
         <view class="send-icon"></view>
       </view>
 
-      <!-- Recording hint capsule (above the bar; keyboard-mode hold only) -->
-      <view wx:if="{{voicePhase === 'recording' && composerMode === 'keyboard'}}" class="voice-hint {{voiceCancelHover ? 'cancel' : ''}}">
-        {{voiceCancelHover ? '松开取消' : '松开完成'}}
+      <!-- Mode toggle: wave (keyboard→voice) / keyboard (voice→keyboard).
+           Always rightmost so its position never jumps between modes. -->
+      <view
+        class="composer-toggle {{voicePhase === 'recording' ? 'disabled' : ''}}"
+        bindtap="onComposerToggle"
+      >
+        <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">
+          <view class="wave-arc wave-arc--1"></view>
+          <view class="wave-arc wave-arc--2"></view>
+          <view class="wave-arc wave-arc--3"></view>
+        </view>
+        <view wx:else class="kb-icon"></view>
       </view>
     </view>
   </view>

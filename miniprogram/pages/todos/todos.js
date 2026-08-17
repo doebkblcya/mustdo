@@ -61,10 +61,11 @@ Page({
     transcript: "",
 
     // Composer bar (keyboard ⇄ voice)
-    composerMode: "keyboard",
+    composerMode: "voice", // default: hold-to-talk; toggle switches to text input
     composerText: "",
+    composerFocus: false,
     composerSubmitting: false,
-    composerPlaceholder: "输入文字或按住说话",
+    composerPlaceholder: "输入文字",
     composerLift: 0, // px — lift above keyboard
     isIOS: false,    // iOS uses keyboard confirm key, no in-bar send arrow
 
@@ -110,10 +111,6 @@ Page({
   _swipeState: null,
   _swipeSpring: null,
   _calSpring: null,
-
-  // ---- Composer hold-to-talk ----
-  _composerHoldTimer: null,
-  _composerHoldTriggered: false,
 
   // ---- Voice ----
   recorder: null,
@@ -918,8 +915,13 @@ Page({
     if (this.data.voicePhase === "recording") return;
     if (this.data.composerSubmitting) return;
     const next = this.data.composerMode === "keyboard" ? "voice" : "keyboard";
-    if (next === "voice") wx.hideKeyboard();
-    this.setData({ composerMode: next });
+    if (next === "voice") {
+      wx.hideKeyboard();
+      this.setData({ composerMode: "voice", composerFocus: false });
+    } else {
+      // Switch to text input and focus immediately — keyboard pops up
+      this.setData({ composerMode: "keyboard", composerFocus: true });
+    }
   },
 
   onComposerTouchStart(event) {
@@ -934,25 +936,10 @@ Page({
     const touch = event.touches && event.touches[0];
     if (touch) this._voiceTouchStartY = touch.clientY;
 
+    // Voice mode: press-to-talk immediately (keyboard mode has no gestures)
     if (this.data.composerMode === "voice") {
-      // Voice mode: press-to-talk immediately
       this.startVoice();
-      return;
     }
-
-    // Keyboard mode: long-press on an EMPTY input records voice;
-    // short-press lets the input focus normally.
-    if (this.data.composerText) return;
-    if (this._composerHoldTimer) clearTimeout(this._composerHoldTimer);
-    this._composerHoldTriggered = false;
-    this._composerHoldTimer = setTimeout(() => {
-      this._composerHoldTimer = null;
-      if (this.data.voicePhase !== "idle") return;
-      if (this.data.composerText) return;
-      wx.hideKeyboard(); // input may already be focused — drop the keyboard
-      this._composerHoldTriggered = true;
-      this.startVoice();
-    }, 350);
   },
 
   onComposerTouchMove(event) {
@@ -962,15 +949,6 @@ Page({
   },
 
   onComposerTouchEnd() {
-    if (this._composerHoldTimer) {
-      clearTimeout(this._composerHoldTimer);
-      this._composerHoldTimer = null;
-    }
-    if (this._composerHoldTriggered) {
-      this._composerHoldTriggered = false;
-      this.stopVoice();
-      return;
-    }
     if (this.data.voicePhase === "recording") {
       this.stopVoice();
     }
@@ -982,6 +960,10 @@ Page({
 
   onComposerInput(event) {
     this.setData({ composerText: event.detail.value });
+  },
+
+  onComposerBlur() {
+    this.setData({ composerFocus: false });
   },
 
   async submitComposerText() {
@@ -997,6 +979,7 @@ Page({
     this.setData({
       composerSubmitting: true,
       composerText: "",
+      composerFocus: false,
       voicePhase: "parsing",
       voiceMessage: "正在解析待办…",
       transcript: content,
