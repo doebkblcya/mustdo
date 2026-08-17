@@ -22,8 +22,7 @@
       <text class="tab-label">明天</text>
     </button>
     <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">
-      <text class="tab-label">{{selectedDate ? viewTitle : '后续'}}</text>
-      <view class="tab-caret {{calendarVisible ? 'tab-caret--up' : ''}}"></view>
+      <text class="tab-label">{{upcomingLabel}}</text>
     </button>
   </view>
 
@@ -58,9 +57,6 @@
             <view wx:if="{{cell.hasDot}}" class="cal-dot"></view>
           </view>
         </view>
-      </view>
-      <view wx:if="{{selectedDate}}" class="cal-footer" bindtap="clearDateFilter">
-        <text class="cal-footer-text">查看全部</text>
       </view>
     </view>
     </view>

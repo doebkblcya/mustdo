@@ -91,6 +91,7 @@ Page({
     calMonth: null,
     calendarWeeks: [],
     selectedDate: "",
+    upcomingLabel: "后续",
   },
 
   // ---- Animation instances (not in data to avoid setData overhead) ----
@@ -213,6 +214,7 @@ Page({
       if (this.data.selectedDate) {
         this.applyDateFilter(this.data.selectedDate);
       }
+      this._syncUpcomingLabel();
     } catch (error) {
       if (error.statusCode === 401) {
         api.clearSession();
@@ -245,8 +247,18 @@ Page({
   switchView(event) {
     const view = event.currentTarget.dataset.view;
     if (view === this.data.activeView) {
-      // Re-tap the active tab: 后续 toggles the calendar
-      if (view === "upcoming") this._toggleCalendar();
+      // Re-tap the active tab (upcoming): the tab label IS the next action
+      if (view === "upcoming") {
+        if (this.data.selectedDate && !this.data.calendarVisible) {
+          this._expandCalendar(); // 「8月20日」→ 展开，文案变「查看全部」
+        } else if (this.data.selectedDate) {
+          this.clearDateFilter(); // 「查看全部」→ 清空并收起
+        } else if (this.data.calendarVisible) {
+          this._collapseCalendar(); // 「收起日历」
+        } else {
+          this._expandCalendar(); // 「展开日历」
+        }
+      }
       return;
     }
     // Switching to another tab — collapse calendar & clear date filter
@@ -255,26 +267,34 @@ Page({
     this.applyActiveView(view);
     const tabIndex = Object.keys(VIEW_META).indexOf(view);
     this._animatePill(tabIndex);
+    this._syncUpcomingLabel();
+  },
+
+  // 后续 tab 文案 = 状态机，永远显示下一步动作：
+  // 今天/明天 → 后续 · 展开日历 ⇄ 收起日历 · 8月20日 ⇄ 查看全部
+  _syncUpcomingLabel() {
+    const { activeView, calendarVisible, selectedDate } = this.data;
+    let label = "后续";
+    if (activeView === "upcoming") {
+      if (selectedDate) {
+        label = calendarVisible ? "查看全部" : formatDateCN(selectedDate);
+      } else {
+        label = calendarVisible ? "收起日历" : "展开日历";
+      }
+    }
+    this.setData({ upcomingLabel: label });
   },
 
   // ========== Calendar (后续 tab) ==========
 
-  _toggleCalendar() {
-    if (this.data.calendarVisible) {
-      this._collapseCalendar();
-    } else {
-      this._expandCalendar();
-    }
-  },
-
   _expandCalendar() {
     if (this.data.calendarVisible) return;
     this.setData({ calendarVisible: true });
+    this._syncUpcomingLabel(); // → 收起日历 / 查看全部
     this._fitCalendarHeight();
   },
 
   // Re-measure the calendar card and spring the wrapper height to match
-  // (used on expand, and after 查看全部 removes the footer)
   _fitCalendarHeight() {
     var self = this;
     setTimeout(function() {
@@ -307,6 +327,7 @@ Page({
       },
       onComplete: function() {
         self.setData({ calendarVisible: false, calHeight: 0 });
+        self._syncUpcomingLabel(); // → 展开日历 / 8月20日
       },
     });
   },
@@ -401,12 +422,13 @@ Page({
       this._collapseCalendar();
       this.applyActiveView("today");
       this._animatePill(Object.keys(VIEW_META).indexOf("today"));
+      this._syncUpcomingLabel();
       return;
     }
     this.setData({ selectedDate: date });
     this._buildCalendar();
     this.applyDateFilter(date);
-    this._collapseCalendar(); // 选完日期收起，日期显示在 tab 上
+    this._collapseCalendar(); // 选完日期收起（标签在收起动画完成后变日期）
   },
 
   applyDateFilter(dateStr) {
@@ -430,7 +452,7 @@ Page({
     this.setData({ selectedDate: "" });
     this._buildCalendar();
     this.applyActiveView(this.data.activeView);
-    this._collapseCalendar(); // 查看全部后收起日历
+    this._collapseCalendar(); // 查看全部后收起日历（标签在收起动画完成后同步）
   },
 
   // ========== Todo actions ==========
