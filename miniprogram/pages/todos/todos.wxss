@@ -1098,7 +1098,7 @@
 
 .cal-dot {
   position: absolute;
-  bottom: 8rpx;
+  bottom: 14rpx;
   left: 50%;
   transform: translateX(-50%);
   width: 8rpx;
@@ -1107,24 +1107,26 @@
   background: #ff9f0a;
 }
 
-/* ---- Calendar footer: 查看全部 ---- */
+/* ---- Calendar footer: 查看全部（中性灰，与其它胶囊按钮一致） ---- */
 
 .cal-footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 10rpx;
-  padding: 14rpx 0 2rpx;
-  border-top: 1rpx solid rgba(0, 0, 0, 0.05);
+  align-self: center;
+  margin-top: 12rpx;
+  padding: 12rpx 32rpx;
+  border-radius: 30rpx;
+  background: #f5f5f7;
   transition: transform 80ms ease-out;
 }
 
 .cal-footer:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .cal-footer-text {
-  color: #ff9f0a;
+  color: #6e6e73;
   font-size: 24rpx;
   font-weight: 500;
 }

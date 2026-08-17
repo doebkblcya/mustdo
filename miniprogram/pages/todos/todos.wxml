@@ -86,8 +86,7 @@
 
     <!-- Empty state -->
     <view wx:elif="{{items.length === 0}}" class="empty-state">
-      <text wx:if="{{selectedDate}}" class="empty-title">这一天没有待办</text>
-      <view wx:else class="empty-line"></view>
+      <view class="empty-line"></view>
     </view>
 
     <!-- Todo items -->
