@@ -1065,16 +1065,9 @@
   font-weight: 400;
 }
 
-.cal-day--today .cal-day-num {
+.cal-day--selected .cal-day-num {
   color: #1d1d1f;
   font-weight: 700;
-}
-
-.cal-day--selected .cal-day-num {
-  background: #e5e5ea;
-  color: #1d1d1f;
-  font-weight: 600;
-  border-radius: 10rpx;
 }
 
 .cal-dot {

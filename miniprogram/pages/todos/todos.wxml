@@ -47,7 +47,7 @@
             wx:for="{{week.days}}"
             wx:for-item="cell"
             wx:key="key"
-            class="cal-day {{cell.inMonth ? '' : 'cal-day--dim'}} {{cell.beforeToday ? 'cal-day--past' : ''}} {{cell.isToday ? 'cal-day--today' : ''}} {{cell.isSelected ? 'cal-day--selected' : ''}}"
+            class="cal-day {{cell.inMonth ? '' : 'cal-day--dim'}} {{cell.beforeToday ? 'cal-day--past' : ''}} {{cell.isSelected ? 'cal-day--selected' : ''}}"
             data-date="{{cell.dateStr}}"
             data-before="{{cell.beforeToday}}"
             data-inmonth="{{cell.inMonth}}"
