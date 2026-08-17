@@ -12,6 +12,7 @@
 
   <!-- Section 2: Content -->
   <view class="section-card section-body">
+    <view class="tab-section">
     <view class="tabs">
     <view class="tab-pill" style="width: {{pillWidth}}px; transform: translateX({{pillX}}px);"></view>
     <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">
@@ -21,8 +22,7 @@
       <text class="tab-label">明天</text>
     </button>
     <button class="tab {{activeView === 'upcoming' ? 'active' : ''}}" data-view="upcoming" bindtap="switchView">
-      <text class="tab-label">{{selectedDate ? viewTitle : '后续'}}</text>
-      <view class="tab-caret {{calendarVisible ? 'tab-caret--up' : ''}}"></view>
+      <text class="tab-label">{{upcomingLabel}}</text>
     </button>
   </view>
 
@@ -58,11 +58,9 @@
           </view>
         </view>
       </view>
-      <view wx:if="{{selectedDate}}" class="cal-footer" bindtap="clearDateFilter">
-        <text class="cal-footer-text">查看全部</text>
-      </view>
     </view>
-  </view>
+    </view>
+    </view>
 
   <view class="todo-list">
     <!-- Skeleton loading -->
@@ -86,8 +84,7 @@
 
     <!-- Empty state -->
     <view wx:elif="{{items.length === 0}}" class="empty-state">
-      <text wx:if="{{selectedDate}}" class="empty-title">这一天没有待办</text>
-      <view wx:else class="empty-line"></view>
+      <view class="empty-line"></view>
     </view>
 
     <!-- Todo items -->
