@@ -12,6 +12,7 @@
 
   <!-- Section 2: Content -->
   <view class="section-card section-body">
+    <view class="tab-section">
     <view class="tabs">
     <view class="tab-pill" style="width: {{pillWidth}}px; transform: translateX({{pillX}}px);"></view>
     <button class="tab {{activeView === 'today' ? 'active' : ''}}" data-view="today" bindtap="switchView">
@@ -62,7 +63,8 @@
         <text class="cal-footer-text">查看全部</text>
       </view>
     </view>
-  </view>
+    </view>
+    </view>
 
   <view class="todo-list">
     <!-- Skeleton loading -->

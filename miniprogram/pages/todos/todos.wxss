@@ -958,9 +958,19 @@
    Calendar (expandable on 后续 tab)
    ================================================================ */
 
+.tab-section {
+  position: relative;
+}
+
 .calendar-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%; /* right under the tabs — overlays the list, doesn't push it */
+  z-index: 5;
   overflow: hidden;
-  margin-bottom: 20rpx;
+  border-radius: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.10);
 }
 
 .calendar {
@@ -1080,20 +1090,15 @@
 }
 
 .cal-day--today .cal-day-num {
+  color: #1d1d1f;
+  font-weight: 700;
+}
+
+.cal-day--selected .cal-day-num {
   background: #e5e5ea;
   color: #1d1d1f;
   font-weight: 600;
   border-radius: 10rpx;
-}
-
-.cal-day--selected {
-  background: #fffaf3;
-  box-shadow: inset 0 0 0 2rpx #ff9f0a;
-}
-
-.cal-day--selected .cal-day-num {
-  color: #1d1d1f;
-  font-weight: 600;
 }
 
 .cal-dot {
