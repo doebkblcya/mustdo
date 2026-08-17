@@ -100,7 +100,7 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 ### 代码约定
 - 数据库：`Depends(get_db)` 在路由中获取连接。简单操作用 `execute()+commit()`，多步用 `BEGIN IMMEDIATE`→`commit()`/`rollback()`
 - 安全：邀请码/密码/token 均不存明文。邀请码格式 `TODO-S/M-XXXX-XXXX-XXXX`，字母表排除 `0OI1`
-- 测试：`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -v`（5 个文件 20 个用例：认证/待办/语音/DeepSeek/错误模型）。临时 SQLite + env patch
+- 测试：`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -v`（5 个文件 25 个用例：认证/待办/语音/DeepSeek/错误模型）。临时 SQLite + env patch
 
 ## 小程序
 
@@ -115,6 +115,18 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 ### 卡片状态
 - **done**：只有 `.todo-content { opacity: 0.5 }` + 文字划线，卡片背景不透明（防滑动区透出）
 - **pinned**：暖白底 `#fffaf3` + 左侧 6rpx 橙色 accent（`::before`）
+
+### 日历交互（后续 tab 展开月历）
+- **入口 = 文案状态机，无图标**：「后续 / 展开日历 / 收起日历 / 8月20日 / 查看全部」永远显示下一步动作
+  - 今天/明天激活 → 「后续」；点它切到后续视图
+  - 后续未选中：收起=「展开日历」，展开=「收起日历」，再点收起
+  - 选中普通未来日期 → 日历收起、tab 显示「8月20日」；再点 tab 展开并变「查看全部」，点它清空筛选并收起
+- **展开**：二次点击后续 tab；日历 `absolute` 覆盖在列表上方（`tab-section` 相对定位 + `top:100%`），不挤压列表；spring 高度折叠动画
+- **网格**：6×7，周一起始，默认当前月，左右箭头翻月；今天之前（含翻到过去月份）置灰不可点；今天无特殊标记
+- **圆点**：仅该日有未完成（pending）待办，`_collectDotDates()` 聚合 today/tomorrow/upcoming 三个分组的 `due_date`，跨月计算，`#ff9f0a`
+- **选中**：仅加粗高亮（无背景）；选中今天/明天 → 跳对应 tab 并清空选中；选中其他日期 → 列表过滤为该日、tab 显示日期
+- **关键约定**：`_expandCalendar()` 先 `_buildCalendar()` 重建网格再显示（选中标记/圆点跟随最新状态，防脏高亮）；标签在展开时立即同步、收起动画完成后同步（`_syncUpcomingLabel`）
+- 数据全部来自 `GET /api/todos` 分组，后端零改动
 
 ### 关键约定
 - 乐观更新后用本地排序不用 `loadTodos`（即时响应，无骨架屏）
