@@ -66,7 +66,7 @@ backend/
     create_invite.py       创建邀请码（支持 --type single/multi）
     list_invites.py        查看邀请码记录
     clear_invites.py       清空所有邀请码
-    cleanup_overdue.py     清理过期待办
+    cleanup_overdue.py     清理软删超 7 天 / 未软删且截止日期超 7 天
     server.sh              后台启动/停止/重启/日志（生产用）
 ```
 
@@ -113,7 +113,7 @@ backend/
 - `due_date = 今天`：今天
 - `due_date = 明天`：明天
 - `due_date > 明天`：后续
-- `due_date < 今天`：隐藏，并由脚本定期清理
+- `due_date < 今天`：隐藏，由每日脚本按“超 7 天”清理（软删超 7 天 或 未软删且截止日期超 7 天）
 
 排序规则（分组内）：置顶优先 → pending 优先 → 无具体时间优先 → 时间升序 → id 升序。
 
@@ -267,7 +267,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 待办按用户隔离。
 - 待办查询、编辑、删除、完成状态、置顶。
 - 今天/明天/后续动态分组 + 置顶优先排序。
-- 过期待办隐藏和清理脚本。
+- 过期待办隐藏；软删超 7 天 / 未软删且截止日期超 7 天由脚本每日清理。
 - 统一错误模型 `{code, message, details}`（含 422 校验明细），`/api/health` 健康检查。
 - 录音时长校验（下限 0.5s / 上限 60s）+ 非 PCM 格式 ffmpeg 转码。
 - 微信小程序（原生框架），含滑动交互和卡片状态系统、无障碍适配（大字号/旧安卓降级动画）。
@@ -373,7 +373,7 @@ cd backend
 uv run python scripts/clear_invites.py
 ```
 
-清理过期待办：
+清理：软删超 7 天 + 未软删且截止日期超 7 天（含已完成项）：
 
 ```bash
 cd backend

@@ -176,12 +176,3 @@ def create_todos(
         created_ids,
     ).fetchall()
     return [row_to_todo(row) for row in rows]
-
-
-def cleanup_overdue_todos(db: sqlite3.Connection) -> int:
-    cursor = db.execute(
-        "DELETE FROM todos WHERE due_date < ?",
-        (today_date().isoformat(),),
-    )
-    db.commit()
-    return cursor.rowcount

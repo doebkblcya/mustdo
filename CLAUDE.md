@@ -66,7 +66,7 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 - 模糊时段→ `due_time = null`；具体时间→ HH:MM
 - 过去日期→归正为今天。content 去掉日期和时间表达
 
-**动态分类**：due_date==今天→today，==明天→tomorrow，>明天→upcoming，<今天→隐藏并定期清理
+**动态分类**：due_date==今天→today，==明天→tomorrow，>明天→upcoming，<今天→隐藏，由每日脚本按“超 7 天”硬删（软删超 7 天 或 未软删且截止日期超 7 天，含完成项）
 
 **排序**：`(not pinned?, done?, has_time?, time_or_empty, id)` — 置顶优先→pending 优先→无时间优先→时间升序→id 升序
 

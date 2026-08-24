@@ -144,7 +144,7 @@ PATH=/usr/local/bin:/usr/bin:/bin:/home/todo/.local/bin
 @reboot sleep 5 && /opt/mustdo/backend/scripts/server.sh start
 ```
 
-三行任务各司其职：每日备份上传、每日过期待办清理（`server.sh` 是 nohup 方案，重启不自起，用 `@reboot` 兜底）。
+三行任务各司其职：每日备份上传、每日待办清理（软删超 7 天 + 未软删且截止日期超 7 天，含已完成项；`server.sh` 是 nohup 方案，重启不自起，用 `@reboot` 兜底）。
 
 ⚠️ cron 的 PATH 很精简：rclone/uv 路径必须可解析；`rclone.conf` 位于部署用户 HOME 下，cron 要以该用户身份运行。
 

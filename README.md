@@ -60,7 +60,7 @@ Mustdo 是一个**轻量语音待办工具**。你只需要按住按钮、说出
 | **文字输入** | 底部通栏切换文字模式，回车/发送键提交，与语音共用同一 AI 解析链路 |
 | **AI 语音转写** | 火山引擎录音文件极速版，同步识别，一次请求即返回 |
 | **智能解析** | DeepSeek JSON 输出，识别内容、日期、时间，支持自然语言日期 |
-| **动态分类** | 今天 / 明天 / 后续 自动分组，过期自动隐藏并定期清理 |
+| **动态分类** | 今天 / 明天 / 后续 自动分组，过期自动隐藏并由每日脚本按“超 7 天”清理 |
 | **置顶待办** | 右滑卡片切换置顶，暖色 accent 标识，列表内优先排序 |
 | **左滑删除** | 左滑露出删除区，松手弹回 + 确认框，防误删 |
 | **手动编辑** | 内容、日期、时间、完成状态均可在界面上手动修改 |
@@ -275,7 +275,7 @@ python -m compileall backend/app backend/scripts backend/tests
 # 运行测试（认证 / 待办 / 语音 / DeepSeek / 错误模型）
 PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests -v
 
-# 清理过期待办
+# 清理：软删超 7 天 + 未软删且截止日期超 7 天（含已完成项）
 cd backend && uv run python scripts/cleanup_overdue.py
 ```
 
