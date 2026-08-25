@@ -83,6 +83,14 @@ Page({
     composerLift: 0, // px — lift above keyboard
     isIOS: false,    // iOS uses keyboard confirm key, no in-bar send arrow
 
+    // Long-text input: expand arrow (shown when the in-bar textarea is full)
+    // + big edit panel (70% screen-height sheet)
+    expandVisible: false, // in-bar expand arrow
+    expanded: false,      // big edit panel open
+    expandSheetHeight: 0,
+    expandTranslateY: 0,
+    expandMaskOpacity: 0,
+
     // Edit sheet
     editVisible: false,
     sheetTranslateY: 0,
@@ -113,6 +121,7 @@ Page({
   _pillSpring: null,
   _sheetSpring: null,
   _maskSpring: null,
+  _expandSpring: null,
   _checkSprings: {},
 
   // ---- Gesture state ----
@@ -1246,6 +1255,72 @@ Page({
     this.setData({ composerText: event.detail.value });
   },
 
+  // In-bar textarea reached its max height (~4 lines) → show the expand arrow
+  onComposerLineChange(event) {
+    const lineCount = event.detail && event.detail.lineCount;
+    const visible = lineCount >= 5; // 5th line starts scrolling inside the bar
+    if (visible !== this.data.expandVisible) {
+      this.setData({ expandVisible: visible });
+    }
+  },
+
+  // ---- Big edit panel (70% screen height) ----
+
+  openExpand() {
+    if (this.data.expanded) return;
+    this.setData({
+      expanded: true,
+      expandTranslateY: this.data.expandSheetHeight || 600,
+      expandMaskOpacity: 0,
+      composerFocus: true, // focus the big textarea → keyboard pops up
+    });
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    this.setData({ expandSheetHeight: Math.round(windowInfo.windowHeight * 0.7) });
+    this._animateExpandIn();
+  },
+
+  _animateExpandIn() {
+    const startY = this.data.expandSheetHeight || 600;
+    if (this._expandSpring) this._expandSpring.stop();
+    this._expandSpring = spring(0, {
+      damping: 0.8,
+      response: 0.3,
+      onUpdate: (value) => {
+        const progress = 1 - value / startY;
+        this.setData({
+          expandTranslateY: value,
+          expandMaskOpacity: Math.min(1, Math.max(0, progress)),
+        });
+      },
+    });
+  },
+
+  closeExpand() {
+    if (!this.data.expanded) return;
+    const targetY = this.data.expandSheetHeight || 600;
+    if (this._expandSpring) this._expandSpring.stop();
+    this._expandSpring = spring(targetY, {
+      damping: 1.0,
+      response: 0.25,
+      onUpdate: (value) => {
+        const progress = 1 - value / targetY;
+        this.setData({
+          expandTranslateY: value,
+          expandMaskOpacity: Math.min(1, Math.max(0, progress)),
+        });
+      },
+      onComplete: () => {
+        this.setData({ expanded: false, composerFocus: false });
+      },
+    });
+  },
+
+  onExpandMaskTap(event) {
+    // Only close when tapping the mask background, not a child element
+    if (event.target !== event.currentTarget) return;
+    this.closeExpand();
+  },
+
   onComposerBlur() {
     this.setData({ composerFocus: false });
   },
@@ -1267,6 +1342,8 @@ Page({
       voicePhase: "parsing",
       voiceMessage: "正在解析待办…",
       transcript: content,
+      expanded: false, // sending closes the big edit panel
+      expandVisible: false,
     });
 
     try {
@@ -1495,7 +1572,7 @@ Page({
   _stopAllSprings() {
     const springs = [
       this._pillSpring, this._sheetSpring, this._voiceSpring, this._maskSpring,
-      this._swipeSpring, this._calSpring,
+      this._swipeSpring, this._calSpring, this._expandSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });
     Object.values(this._checkSprings).forEach((s) => { if (s) s.stop(); });
