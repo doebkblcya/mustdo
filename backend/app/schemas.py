@@ -12,24 +12,21 @@ TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 class UserPublic(BaseModel):
     id: int
-    username: str
 
 
-class RegisterRequest(BaseModel):
-    username: str = Field(max_length=64)
-    password: str = Field(max_length=128)
-    invite_code: str = Field(max_length=128)
+class WechatLoginRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
 
 
-class LoginRequest(BaseModel):
-    username: str = Field(max_length=64)
-    password: str = Field(max_length=128)
+class InviteRedeemRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
 
 
 class AuthTokenResponse(BaseModel):
     user: UserPublic
     token: str
     token_type: Literal["bearer"] = "bearer"
+    needs_invite: bool
 
 
 class TodoPublic(BaseModel):

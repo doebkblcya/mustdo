@@ -27,8 +27,21 @@ function getStoredUser() {
   return wx.getStorageSync(USER_KEY) || null;
 }
 
+var _reloginPromise = null;
+
+function _relogin() {
+  if (_reloginPromise) return _reloginPromise;
+  clearSession();
+  _reloginPromise = wechatLogin().then(
+    function() { _reloginPromise = null; },
+    function() { _reloginPromise = null; }
+  );
+  return _reloginPromise;
+}
+
 function request(path, options) {
   var opts = options || {};
+  var retry = !!opts._retry;
   var token = getToken();
   var headers = { "Content-Type": "application/json" };
   if (opts.headers) {
@@ -52,6 +65,18 @@ function request(path, options) {
           resolve(response.data);
           return;
         }
+        // Session expired: silently re-login via WeChat, then retry once.
+        if (statusCode === 401 && !retry && path !== "/api/auth/wechat") {
+          _relogin()
+            .then(function() {
+              var retryOpts = {};
+              Object.keys(opts).forEach(function(k) { retryOpts[k] = opts[k]; });
+              retryOpts._retry = true;
+              resolve(request(path, retryOpts));
+            })
+            .catch(function(err) { reject(err); });
+          return;
+        }
         reject(apiError(response.data, statusCode));
       },
       fail: function(error) {
@@ -71,29 +96,39 @@ function apiError(data, statusCode) {
   return error;
 }
 
-function login(username, password) {
-  return request("/api/auth/token/login", {
-    method: "POST",
-    data: { username: username, password: password }
-  }).then(function(result) {
-    setSession(result);
-    return result.user;
-  });
-}
-
-function register(username, password, inviteCode) {
-  return request("/api/auth/token/register", {
-    method: "POST",
-    data: { username: username, password: password, invite_code: inviteCode }
-  }).then(function(result) {
-    setSession(result);
-    return result.user;
+function wechatLogin() {
+  return new Promise(function(resolve, reject) {
+    wx.login({
+      success: function(res) {
+        if (!res.code) {
+          reject(new Error("微信登录失败，请重试"));
+          return;
+        }
+        request("/api/auth/wechat", {
+          method: "POST",
+          data: { code: res.code }
+        }).then(function(result) {
+          setSession(result);
+          resolve(result);
+        }).catch(reject);
+      },
+      fail: function() {
+        reject(new Error("微信登录失败，请重试"));
+      }
+    });
   });
 }
 
 function logout() {
   return request("/api/auth/logout", { method: "POST" }).then(function() {}, function() {}).then(function() {
     clearSession();
+  });
+}
+
+function redeemInvite(code) {
+  return request("/api/invites/redeem", {
+    method: "POST",
+    data: { code: code }
   });
 }
 
@@ -254,8 +289,8 @@ module.exports = {
   getToken: getToken,
   getStoredUser: getStoredUser,
   clearSession: clearSession,
-  login: login,
-  register: register,
+  wechatLogin: wechatLogin,
+  redeemInvite: redeemInvite,
   logout: logout,
   listTodos: listTodos,
   updateTodo: updateTodo,

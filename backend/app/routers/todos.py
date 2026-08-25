@@ -4,7 +4,7 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, status
 
-from app.deps import current_user, get_db
+from app.deps import current_user_invited, get_db
 from app.errors import raise_api_error
 from app.schemas import TodoListResponse, TodoPublic, TodoUpdateRequest
 from app.services.todos import list_grouped_todos, soft_delete_todo, update_todo
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/todos", tags=["todos"])
 @router.get("", response_model=TodoListResponse)
 def list_todos(
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user),
+    user: sqlite3.Row = Depends(current_user_invited),
 ):
     return list_grouped_todos(db, int(user["id"]))
 
@@ -26,7 +26,7 @@ def patch_todo(
     todo_id: int,
     payload: TodoUpdateRequest,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user),
+    user: sqlite3.Row = Depends(current_user_invited),
 ):
     fields = payload.model_fields_set
     values: dict[str, object] = {}
@@ -55,7 +55,7 @@ def patch_todo(
 def delete_todo(
     todo_id: int,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user),
+    user: sqlite3.Row = Depends(current_user_invited),
 ) -> None:
     deleted = soft_delete_todo(db, int(user["id"]), todo_id)
     if not deleted:

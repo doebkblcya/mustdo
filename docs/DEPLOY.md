@@ -57,6 +57,7 @@ git clone <仓库地址> /opt/mustdo && cd $BACKEND && uv sync
 - `SECRET_KEY`：**新生成**的随机值（勿用默认值）
 - `VOLC_API_KEY`（新版认证优先）/ `VOLC_APP_KEY` + `VOLC_ACCESS_KEY`（旧版回退）
 - `DEEPSEEK_API_KEY`
+- `WECHAT_APP_ID` + `WECHAT_APP_SECRET`：微信小程序静默登录。**appid 必须与小程序 `project.config.json` 里的 appid 一致**，secret 取自对应小程序后台（测试号或正式号）。两者缺一，`/api/auth/wechat` 返回 `wechat_config_missing`，小程序显示「微信登录暂不可用」。
 - 其余（`SESSION_DAYS`、`TIMEZONE=Asia/Shanghai`、`MAX_AUDIO_SECONDS`、`MIN_AUDIO_SECONDS`）用默认即可
 
 ### 4. 连通性预检（US VPS 特有）

@@ -24,11 +24,10 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                username_normalized TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
+                wechat_openid TEXT NOT NULL UNIQUE,
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'disabled')),
+                invite_redeemed_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
@@ -81,6 +80,45 @@ def init_db() -> None:
         )
         _migrate_invite_codes_type(conn)
         _migrate_todos_pinned(conn)
+        _migrate_users_wechat(conn)
+
+
+def _migrate_users_wechat(conn: sqlite3.Connection) -> None:
+    """Migration: rebuild users to the WeChat identity schema.
+
+    The legacy schema used username/password + invite registration. We now
+    identify users purely by wechat_openid. Existing (pre-WeChat) users have no
+    openid and cannot log in again, so we rebuild the table. There are no real
+    users yet, so no rows are preserved.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('users')").fetchall()}
+    if "wechat_openid" in cols:
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE users_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wechat_openid TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'disabled')),
+                invite_redeemed_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            )
+            """
+        )
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_new RENAME TO users")
+        # Old sessions reference pre-rebuild user ids that are now reassigned;
+        # clear them so no stale token can authenticate as a (different) user.
+        conn.execute("DELETE FROM sessions")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_invite_codes_type(conn: sqlite3.Connection) -> None:

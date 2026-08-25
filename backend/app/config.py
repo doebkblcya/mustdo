@@ -31,6 +31,8 @@ class Settings:
     deepseek_api_key: str
     deepseek_base_url: str
     deepseek_model: str
+    wechat_app_id: str
+    wechat_app_secret: str
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -56,4 +58,6 @@ def get_settings() -> Settings:
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        wechat_app_id=os.getenv("WECHAT_APP_ID", ""),
+        wechat_app_secret=os.getenv("WECHAT_APP_SECRET", ""),
     )

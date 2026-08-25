@@ -56,3 +56,17 @@ def current_user(
     if row is None:
         raise_api_error(status.HTTP_401_UNAUTHORIZED, "unauthorized", "请先登录")
     return row
+
+
+def current_user_invited(
+    user: sqlite3.Row = Depends(current_user),
+) -> sqlite3.Row:
+    """Authentication + invite gate.
+
+    Business endpoints require a redeemed invite code during the closed beta.
+    Remove this wrapper (and switch endpoints back to ``current_user``) when the
+    invite module is dropped at public launch.
+    """
+    if user["invite_redeemed_at"] is None:
+        raise_api_error(status.HTTP_403_FORBIDDEN, "invite_required", "请先填写邀请码")
+    return user

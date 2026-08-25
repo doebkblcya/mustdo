@@ -4,7 +4,6 @@
     <view class="app-header">
       <view>
         <text class="wordmark">mustdo</text>
-        <text class="greeting">{{user ? user.username : ''}}</text>
       </view>
       <button class="logout-button" bindtap="logout">退出</button>
     </view>

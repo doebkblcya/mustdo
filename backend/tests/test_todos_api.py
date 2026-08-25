@@ -45,10 +45,8 @@ class TodoApiTests(unittest.TestCase):
         try:
             user = db.execute(
                 """
-                INSERT INTO users (
-                    username, username_normalized, password_hash, status, created_at, updated_at
-                )
-                VALUES ('tester', 'tester', 'hash', 'active', ?, ?)
+                INSERT INTO users (wechat_openid, status, created_at, updated_at)
+                VALUES ('openid-test', 'active', ?, ?)
                 """,
                 (now.isoformat(timespec="seconds"), now.isoformat(timespec="seconds")),
             )

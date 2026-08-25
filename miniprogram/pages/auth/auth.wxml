@@ -4,72 +4,39 @@
     <text class="auth-wordmark">mustdo</text>
   </view>
 
-  <!-- Segmented control -->
-  <view class="auth-tabs">
-    <view class="auth-tab-pill" style="width: {{pillWidth}}px; transform: translateX({{pillX}}px);"></view>
-    <button class="auth-tab {{mode === 'login' ? 'is-active' : ''}}" bindtap="switchToLogin">
-      <text class="auth-tab-label">登录</text>
-    </button>
-    <button class="auth-tab {{mode === 'register' ? 'is-active' : ''}}" bindtap="switchToRegister">
-      <text class="auth-tab-label">注册</text>
+  <!-- Launching -->
+  <view class="auth-launch" wx:if="{{phase === 'launching'}}">
+    <view class="auth-spinner"></view>
+    <text class="auth-launch-text">正在登录…</text>
+  </view>
+
+  <!-- Invite gate -->
+  <view class="auth-form" wx:elif="{{phase === 'invite'}}">
+    <text class="auth-invite-title">填写邀请码继续使用</text>
+    <view class="auth-field">
+      <view class="auth-field-icon auth-field-icon--invite"></view>
+      <input
+        class="auth-input"
+        value="{{inviteCode}}"
+        placeholder="邀请码"
+        placeholder-class="auth-placeholder"
+        bindinput="onInviteInput"
+      />
+    </view>
+    <text class="auth-error" wx:if="{{error}}">{{error}}</text>
+    <button
+      class="auth-submit"
+      bindtap="submitInvite"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+    >
+      确认并进入
     </button>
   </view>
 
-  <!-- Form -->
-  <form bindsubmit="submit">
-    <view class="auth-form" style="opacity: {{panelOpacity}}; transform: translateY({{panelTranslateY}}rpx);">
-      <!-- Username -->
-      <view class="auth-field">
-        <view class="auth-field-icon auth-field-icon--user"></view>
-        <input
-          class="auth-input"
-          value="{{username}}"
-          placeholder="用户名"
-          placeholder-class="auth-placeholder"
-          bindinput="onUsernameInput"
-        />
-      </view>
-
-      <!-- Password -->
-      <view class="auth-field auth-field--password">
-        <view class="auth-field-icon auth-field-icon--lock"></view>
-        <input
-          class="auth-input"
-          value="{{password}}"
-          password="{{!passwordVisible}}"
-          placeholder="{{mode === 'register' ? '密码（至少 8 位）' : '密码'}}"
-          placeholder-class="auth-placeholder"
-          bindinput="onPasswordInput"
-        />
-        <button class="auth-field-action" bindtap="togglePasswordVisible">
-          <view class="eye-icon {{passwordVisible ? 'eye-icon--on' : 'eye-icon--off'}}"></view>
-        </button>
-      </view>
-
-      <!-- Invite code -->
-      <view class="auth-field" wx:if="{{mode === 'register'}}">
-        <view class="auth-field-icon auth-field-icon--invite"></view>
-        <input
-          class="auth-input"
-          value="{{inviteCode}}"
-          placeholder="邀请码"
-          placeholder-class="auth-placeholder"
-          bindinput="onInviteInput"
-        />
-      </view>
-
-      <!-- Error -->
-      <text class="auth-error" wx:if="{{error}}">{{error}}</text>
-
-      <!-- Submit -->
-      <button
-        class="auth-submit"
-        form-type="submit"
-        loading="{{submitting}}"
-        disabled="{{submitting}}"
-      >
-        {{mode === 'register' ? '创建账号' : '登录'}}
-      </button>
-    </view>
-  </form>
+  <!-- Failed -->
+  <view class="auth-launch" wx:else>
+    <text class="auth-error auth-error--center">{{error}}</text>
+    <button class="auth-retry" bindtap="retryLogin">重新登录</button>
+  </view>
 </view>

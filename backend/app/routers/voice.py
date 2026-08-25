@@ -6,7 +6,7 @@ from time import perf_counter
 
 from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 
-from app.deps import current_user, get_db
+from app.deps import current_user_invited, get_db
 from app.errors import raise_api_error
 from app.schemas import AiCreateRequest, AiCreateResponse, TranscriptionResponse
 from app.services.asr import VolcAsrError, VolcSilentAudioError, recognize_pcm
@@ -26,7 +26,7 @@ def _elapsed_ms(started_at: float) -> int:
 @router.post("/voice/transcriptions", response_model=TranscriptionResponse)
 async def create_transcription(
     file: UploadFile = File(...),
-    user: sqlite3.Row = Depends(current_user),
+    user: sqlite3.Row = Depends(current_user_invited),
 ):
     _ = user
     started_at = perf_counter()
@@ -71,7 +71,7 @@ async def create_todos_from_transcript(
     payload: AiCreateRequest,
     response: Response,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user),
+    user: sqlite3.Row = Depends(current_user_invited),
 ):
     started_at = perf_counter()
     parsed_at: float | None = None

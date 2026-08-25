@@ -3,22 +3,14 @@ from __future__ import annotations
 import sqlite3
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, status
 
 from app.config import get_settings
 from app.deps import bearer_token_from_authorization, current_user, get_db
 from app.errors import raise_api_error
-from app.schemas import AuthTokenResponse, LoginRequest, RegisterRequest, UserPublic
-from app.security import (
-    generate_session_token,
-    hash_invite_code,
-    hash_password,
-    hash_session_token,
-    normalize_username,
-    validate_password,
-    validate_username,
-    verify_password,
-)
+from app.schemas import AuthTokenResponse, UserPublic, WechatLoginRequest
+from app.security import generate_session_token, hash_session_token
+from app.services.wechat import WechatLoginError, exchange_code_for_openid
 from app.time_utils import now_shanghai, utcish_now_iso
 
 
@@ -45,101 +37,59 @@ def _create_session(db: sqlite3.Connection, user_id: int) -> str:
     return token
 
 
-def _register_user(db: sqlite3.Connection, payload: RegisterRequest) -> tuple[UserPublic, str]:
+@router.post("/auth/wechat", response_model=AuthTokenResponse)
+async def wechat_login(
+    payload: WechatLoginRequest,
+    db: sqlite3.Connection = Depends(get_db),
+):
     try:
-        username = validate_username(payload.username)
-        validate_password(payload.password)
-    except ValueError as exc:
-        raise_api_error(status.HTTP_400_BAD_REQUEST, "invalid_account_input", str(exc))
+        openid = await exchange_code_for_openid(payload.code)
+    except WechatLoginError as exc:
+        raise_api_error(exc.http_status, exc.code, exc.message)
 
-    username_normalized = normalize_username(username)
-    invite_hash = hash_invite_code(payload.invite_code)
     now = utcish_now_iso()
+    existing = db.execute(
+        "SELECT id, status, invite_redeemed_at FROM users WHERE wechat_openid = ?",
+        (openid,),
+    ).fetchone()
+
+    if existing is not None and existing["status"] != "active":
+        raise_api_error(status.HTTP_403_FORBIDDEN, "account_disabled", "账号当前不可用")
 
     try:
         db.execute("BEGIN IMMEDIATE")
-        invite = db.execute(
-            "SELECT * FROM invite_codes WHERE code_hash = ? AND status = 'active'",
-            (invite_hash,),
-        ).fetchone()
-        if invite is None:
-            db.execute("ROLLBACK")
-            raise_api_error(status.HTTP_400_BAD_REQUEST, "invalid_invite_code", "邀请码无效")
-
-        existing_user = db.execute(
-            "SELECT id FROM users WHERE username_normalized = ?",
-            (username_normalized,),
-        ).fetchone()
-        if existing_user is not None:
-            db.execute("ROLLBACK")
-            raise_api_error(status.HTTP_409_CONFLICT, "username_exists", "用户名已存在")
-
-        cursor = db.execute(
-            """
-            INSERT INTO users (
-                username, username_normalized, password_hash, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, 'active', ?, ?)
-            """,
-            (username, username_normalized, hash_password(payload.password), now, now),
-        )
-        user_id = int(cursor.lastrowid)
-        if invite["type"] == "single":
-            db.execute(
+        if existing is None:
+            cursor = db.execute(
                 """
-                UPDATE invite_codes
-                SET status = 'redeemed', used_at = ?, used_by_user_id = ?
-                WHERE id = ?
+                INSERT INTO users (wechat_openid, status, created_at, updated_at, last_login_at)
+                VALUES (?, 'active', ?, ?, ?)
                 """,
-                (now, user_id, invite["id"]),
+                (openid, now, now, now),
             )
+            user_id = int(cursor.lastrowid)
+            invite_redeemed = None
         else:
+            user_id = int(existing["id"])
+            invite_redeemed = existing["invite_redeemed_at"]
             db.execute(
-                """
-                UPDATE invite_codes
-                SET used_at = ?, used_by_user_id = ?
-                WHERE id = ?
-                """,
-                (now, user_id, invite["id"]),
+                "UPDATE users SET last_login_at = ? WHERE id = ?",
+                (now, user_id),
             )
         token = _create_session(db, user_id)
         db.execute("COMMIT")
-    except HTTPException:
-        raise
     except sqlite3.Error:
         db.execute("ROLLBACK")
-        raise_api_error(status.HTTP_500_INTERNAL_SERVER_ERROR, "register_failed", "注册失败")
+        raise_api_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "wechat_login_failed",
+            "微信登录失败，请重试",
+        )
 
-    return UserPublic(id=user_id, username=username), token
-
-
-def _login_user(db: sqlite3.Connection, payload: LoginRequest) -> tuple[UserPublic, str]:
-    user = db.execute(
-        """
-        SELECT * FROM users
-        WHERE username_normalized = ? AND status = 'active'
-        """,
-        (normalize_username(payload.username),),
-    ).fetchone()
-    if user is None or not verify_password(payload.password, user["password_hash"]):
-        raise_api_error(status.HTTP_401_UNAUTHORIZED, "invalid_credentials", "用户名或密码错误")
-
-    token = _create_session(db, int(user["id"]))
-    db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utcish_now_iso(), user["id"]))
-    db.commit()
-    return UserPublic(id=user["id"], username=user["username"]), token
-
-
-@router.post("/auth/token/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
-def register_for_token(payload: RegisterRequest, db: sqlite3.Connection = Depends(get_db)):
-    user, token = _register_user(db, payload)
-    return AuthTokenResponse(user=user, token=token)
-
-
-@router.post("/auth/token/login", response_model=AuthTokenResponse)
-def login_for_token(payload: LoginRequest, db: sqlite3.Connection = Depends(get_db)):
-    user, token = _login_user(db, payload)
-    return AuthTokenResponse(user=user, token=token)
+    return AuthTokenResponse(
+        user=UserPublic(id=user_id),
+        token=token,
+        needs_invite=invite_redeemed is None,
+    )
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -158,4 +108,4 @@ def logout(
 
 @router.get("/me", response_model=UserPublic)
 def me(user: sqlite3.Row = Depends(current_user)):
-    return UserPublic(id=user["id"], username=user["username"])
+    return UserPublic(id=int(user["id"]))
