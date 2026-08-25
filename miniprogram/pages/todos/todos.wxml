@@ -5,7 +5,6 @@
       <view>
         <text class="wordmark">mustdo</text>
       </view>
-      <button class="logout-button" bindtap="logout">退出</button>
     </view>
   </view>
 

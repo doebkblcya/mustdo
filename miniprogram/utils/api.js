@@ -32,9 +32,11 @@ var _reloginPromise = null;
 function _relogin() {
   if (_reloginPromise) return _reloginPromise;
   clearSession();
+  // On failure, rethrow so callers (request / uploadVoice retries) surface the
+  // real error instead of retrying with an empty token.
   _reloginPromise = wechatLogin().then(
     function() { _reloginPromise = null; },
-    function() { _reloginPromise = null; }
+    function(err) { _reloginPromise = null; throw err; }
   );
   return _reloginPromise;
 }
@@ -119,12 +121,6 @@ function wechatLogin() {
   });
 }
 
-function logout() {
-  return request("/api/auth/logout", { method: "POST" }).then(function() {}, function() {}).then(function() {
-    clearSession();
-  });
-}
-
 function redeemInvite(code) {
   return request("/api/invites/redeem", {
     method: "POST",
@@ -152,6 +148,10 @@ function createTodosFromTranscript(transcript, source) {
 }
 
 function uploadVoice(filePath) {
+  return uploadVoiceOnce(filePath, false);
+}
+
+function uploadVoiceOnce(filePath, retried) {
   var token = getToken();
   return new Promise(function(resolve, reject) {
     wx.uploadFile({
@@ -169,6 +169,15 @@ function uploadVoice(filePath) {
           } catch (_e) {
             reject(new Error("语音服务返回格式异常"));
           }
+          return;
+        }
+        // Session expired: silently re-login via WeChat, then re-upload once.
+        if (statusCode === 401 && !retried) {
+          _relogin()
+            .then(function() {
+              resolve(uploadVoiceOnce(filePath, true));
+            })
+            .catch(reject);
           return;
         }
         try {
@@ -291,7 +300,6 @@ module.exports = {
   clearSession: clearSession,
   wechatLogin: wechatLogin,
   redeemInvite: redeemInvite,
-  logout: logout,
   listTodos: listTodos,
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,

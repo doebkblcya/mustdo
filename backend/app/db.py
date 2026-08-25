@@ -113,9 +113,16 @@ def _migrate_users_wechat(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE users")
         conn.execute("ALTER TABLE users_new RENAME TO users")
-        # Old sessions reference pre-rebuild user ids that are now reassigned;
-        # clear them so no stale token can authenticate as a (different) user.
+        # Old sessions / todos / invite usage all reference pre-rebuild user
+        # ids. The rebuilt users table restarts AUTOINCREMENT at 1, so without
+        # cleanup the first WeChat user could read another account's todos or
+        # inherit invite usage. Old (pre-WeChat) data is abandoned entirely.
         conn.execute("DELETE FROM sessions")
+        conn.execute("DELETE FROM todos")
+        conn.execute(
+            "UPDATE invite_codes SET used_by_user_id = NULL, used_at = NULL"
+            " WHERE used_by_user_id IS NOT NULL"
+        )
         conn.commit()
     finally:
         conn.execute("PRAGMA foreign_keys = ON")

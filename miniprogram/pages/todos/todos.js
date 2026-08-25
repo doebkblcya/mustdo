@@ -1034,13 +1034,6 @@ Page({
 
   // ========== Voice input ==========
 
-  async logout() {
-    await api.logout();
-    wx.redirectTo({ url: "/pages/auth/auth" });
-  },
-
-  // ========== Voice input ==========
-
   setupRecorder() {
     if (this.recorder) return;
     this.recorder = wx.getRecorderManager();
