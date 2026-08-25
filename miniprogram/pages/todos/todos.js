@@ -77,19 +77,20 @@ Page({
     // Composer bar (keyboard ⇄ voice)
     composerMode: "voice", // default: hold-to-talk; toggle switches to text input
     composerText: "",
+    composerCursor: -1,
     composerFocus: false,
     composerSubmitting: false,
     composerPlaceholder: "输入文字",
     composerLift: 0, // px — lift above keyboard
     isIOS: false,    // iOS uses keyboard confirm key, no in-bar send arrow
 
-    // Long-text input: expand arrow (shown when the in-bar textarea is full)
-    // + big edit panel (70% screen-height sheet)
-    expandVisible: false, // in-bar expand arrow
-    expanded: false,      // big edit panel open
-    expandSheetHeight: 0,
-    expandTranslateY: 0,
-    expandMaskOpacity: 0,
+    // Long-text composer. Compact/expanded native nodes share text and cursor state.
+    expandVisible: false,
+    expanded: false,
+    composerOverflow: false,
+    composerTall: false,
+    composerKeyboardHeight: 0,
+    expandTop: 0,
 
     // Edit sheet
     editVisible: false,
@@ -121,7 +122,6 @@ Page({
   _pillSpring: null,
   _sheetSpring: null,
   _maskSpring: null,
-  _expandSpring: null,
   _checkSprings: {},
 
   // ---- Gesture state ----
@@ -144,6 +144,8 @@ Page({
 
   // ---- Other ----
   _editCloseTimer: null,
+  _composerSwitchTimer: null,
+  _composerSwitching: false,
 
   // ========== Lifecycle ==========
 
@@ -161,13 +163,23 @@ Page({
 
     // iOS keeps the send action on the keyboard confirm key (no in-bar arrow)
     const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
-    this.setData({ isIOS: device.platform === "ios" });
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    this.setData({
+      isIOS: device.platform === "ios",
+      expandTop: Math.round(windowInfo.windowHeight * 0.2),
+    });
 
-    // Pin the fixed composer bar above the keyboard
+    // Pin the compact bar above the keyboard. In expanded mode the same height
+    // becomes the panel's bottom inset, keeping its top visible on small screens.
     if (wx.onKeyboardHeightChange) {
-      wx.onKeyboardHeightChange((res) => {
-        this.setData({ composerLift: res.height > 0 ? -res.height : 0 });
-      });
+      this._keyboardHeightHandler = (res) => {
+        const height = Math.max(0, Number(res.height) || 0);
+        this.setData({
+          composerKeyboardHeight: height,
+          composerLift: height > 0 ? -height : 0,
+        });
+      };
+      wx.onKeyboardHeightChange(this._keyboardHeightHandler);
     }
 
     this.loadTodos();
@@ -175,7 +187,10 @@ Page({
   },
 
   onUnload() {
-    if (wx.offKeyboardHeightChange) wx.offKeyboardHeightChange();
+    if (wx.offKeyboardHeightChange && this._keyboardHeightHandler) {
+      wx.offKeyboardHeightChange(this._keyboardHeightHandler);
+    }
+    if (this._composerSwitchTimer) clearTimeout(this._composerSwitchTimer);
     this._stopAllSprings();
   },
 
@@ -1210,7 +1225,11 @@ Page({
     const next = this.data.composerMode === "keyboard" ? "voice" : "keyboard";
     if (next === "voice") {
       wx.hideKeyboard();
-      this.setData({ composerMode: "voice", composerFocus: false });
+      this.setData({
+        composerMode: "voice",
+        composerFocus: false,
+        expanded: false,
+      });
     } else {
       // Switch to text input and focus immediately — keyboard pops up
       this.setData({ composerMode: "keyboard", composerFocus: true });
@@ -1252,77 +1271,76 @@ Page({
   },
 
   onComposerInput(event) {
-    this.setData({ composerText: event.detail.value });
-  },
-
-  // In-bar textarea reached its max height (~4 lines) → show the expand arrow
-  onComposerLineChange(event) {
-    const lineCount = event.detail && event.detail.lineCount;
-    const visible = lineCount >= 5; // 5th line starts scrolling inside the bar
-    if (visible !== this.data.expandVisible) {
-      this.setData({ expandVisible: visible });
+    const value = event.detail.value;
+    const cursor = Number(event.detail.cursor);
+    const patch = {
+      composerText: value,
+      composerCursor: Number.isFinite(cursor) ? cursor : value.length,
+    };
+    if (!value) {
+      patch.expandVisible = false;
+      patch.composerOverflow = false;
+      patch.composerTall = false;
     }
+    this.setData(patch);
   },
 
-  // ---- Big edit panel (70% screen height) ----
+  // The compact textarea grows naturally until its fifth visual line. At that
+  // point auto-height is disabled and the fixed-height textarea scrolls.
+  onComposerLineChange(event) {
+    const detail = event.detail || {};
+    const lineCount = Math.max(1, Number(detail.lineCount) || 1);
+    const overflow = lineCount >= 5;
+    this.setData({
+      expandVisible: overflow,
+      composerOverflow: overflow,
+      composerTall: lineCount >= 3,
+    });
+  },
+
+  onComposerConfirm() {
+    // Android uses the return key for newlines and the in-bar arrow to submit.
+    if (this.data.isIOS) this.submitComposerText();
+  },
+
+  // ---- Expanded composer ----
 
   openExpand() {
-    if (this.data.expanded) return;
-    this.setData({
-      expanded: true,
-      expandTranslateY: this.data.expandSheetHeight || 600,
-      expandMaskOpacity: 0,
-      composerFocus: true, // focus the big textarea → keyboard pops up
-    });
-    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-    this.setData({ expandSheetHeight: Math.round(windowInfo.windowHeight * 0.7) });
-    this._animateExpandIn();
-  },
-
-  _animateExpandIn() {
-    const startY = this.data.expandSheetHeight || 600;
-    if (this._expandSpring) this._expandSpring.stop();
-    this._expandSpring = spring(0, {
-      damping: 0.8,
-      response: 0.3,
-      onUpdate: (value) => {
-        const progress = 1 - value / startY;
-        this.setData({
-          expandTranslateY: value,
-          expandMaskOpacity: Math.min(1, Math.max(0, progress)),
-        });
-      },
-    });
+    if (this.data.expanded || this.data.composerMode !== "keyboard") return;
+    this._switchComposerLayout(true);
   },
 
   closeExpand() {
     if (!this.data.expanded) return;
-    const targetY = this.data.expandSheetHeight || 600;
-    if (this._expandSpring) this._expandSpring.stop();
-    this._expandSpring = spring(targetY, {
-      damping: 1.0,
-      response: 0.25,
-      onUpdate: (value) => {
-        const progress = 1 - value / targetY;
-        this.setData({
-          expandTranslateY: value,
-          expandMaskOpacity: Math.min(1, Math.max(0, progress)),
-        });
-      },
-      onComplete: () => {
-        this.setData({ expanded: false, composerFocus: false });
-      },
+    this._switchComposerLayout(false);
+  },
+
+  _switchComposerLayout(expanded) {
+    // The native textarea is intentionally remounted to reset its private
+    // scrollTop. Ignore the outgoing node's blur while the new one focuses.
+    this._composerSwitching = true;
+    if (this._composerSwitchTimer) clearTimeout(this._composerSwitchTimer);
+    this.setData({ expanded, composerFocus: true }, () => {
+      this._composerSwitchTimer = setTimeout(() => {
+        this._composerSwitching = false;
+        this._composerSwitchTimer = null;
+        if (
+          this.data.composerMode === "keyboard"
+          && !this.data.composerSubmitting
+          && this.data.voicePhase === "idle"
+        ) {
+          this.setData({ composerFocus: true });
+        }
+      }, 80);
     });
   },
 
-  onExpandMaskTap(event) {
-    // Only close when tapping the mask background, not a child element
-    if (event.target !== event.currentTarget) return;
-    this.closeExpand();
-  },
-
-  onComposerBlur() {
-    this.setData({ composerFocus: false });
+  onComposerBlur(event) {
+    const cursor = Number(event && event.detail && event.detail.cursor);
+    const patch = {};
+    if (Number.isFinite(cursor)) patch.composerCursor = cursor;
+    if (!this._composerSwitching) patch.composerFocus = false;
+    this.setData(patch);
   },
 
   async submitComposerText() {
@@ -1338,12 +1356,15 @@ Page({
     this.setData({
       composerSubmitting: true,
       composerText: "",
+      composerCursor: -1,
       composerFocus: false,
       voicePhase: "parsing",
       voiceMessage: "正在解析待办…",
       transcript: content,
-      expanded: false, // sending closes the big edit panel
+      expanded: false,
       expandVisible: false,
+      composerOverflow: false,
+      composerTall: false,
     });
 
     try {
@@ -1572,7 +1593,7 @@ Page({
   _stopAllSprings() {
     const springs = [
       this._pillSpring, this._sheetSpring, this._voiceSpring, this._maskSpring,
-      this._swipeSpring, this._calSpring, this._expandSpring,
+      this._swipeSpring, this._calSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });
     Object.values(this._checkSprings).forEach((s) => { if (s) s.stop(); });

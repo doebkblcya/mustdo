@@ -1,4 +1,4 @@
-<view class="todos-page page">
+<view class="todos-page page {{composerTall && composerMode === 'keyboard' ? 'todos-page--composer-tall' : ''}}">
   <!-- Section 1: Header -->
   <view class="section-card section-header">
     <view class="app-header">
@@ -162,70 +162,86 @@
     </view>
   </view>
 
-  <!-- Bottom composer bar: keyboard input ⇄ hold-to-talk voice -->
-  <view class="input-dock">
+  <!-- Composer: one state model, separate compact/expanded geometry. -->
+  <view
+    class="input-dock {{expanded ? 'input-dock--expanded' : ''}} {{composerKeyboardHeight > 0 ? 'input-dock--keyboard-visible' : ''}}"
+    style="{{expanded ? ('bottom: ' + composerKeyboardHeight + 'px;') : ''}}"
+  >
     <view
-      class="composer-bar {{voicePhase === 'recording' ? 'recording' : ''}}"
-      style="transform: translateY({{composerLift}}px);"
+      class="composer-surface {{expanded ? 'composer-surface--expanded' : ''}} {{voicePhase === 'recording' ? 'composer-surface--recording' : ''}}"
+      style="{{expanded ? ('top: ' + expandTop + 'px; bottom: 0;') : ('transform: translateY(' + composerLift + 'px);')}}"
     >
-      <!-- Mode: hold-to-talk voice (default) ⇄ text input (via toggle) -->
       <view
         wx:if="{{composerMode === 'keyboard'}}"
-        class="composer-field"
+        class="composer-editor"
       >
-        <!-- textarea with auto-height: grows past ~1 line (long text), scrolls
-             beyond 4 lines; iOS confirm key sends, Android keeps the arrow -->
+        <!-- Mutually exclusive native nodes prevent compact scrollTop leaking
+             into the expanded editor. Both use the same text/cursor state. -->
         <textarea
-          class="composer-input"
+          wx:if="{{expanded}}"
+          class="composer-textarea composer-textarea--expanded"
           value="{{composerText}}"
+          cursor="{{composerCursor}}"
           placeholder="{{composerPlaceholder}}"
           placeholder-class="composer-placeholder"
-          confirm-type="send"
+          confirm-type="{{isIOS ? 'send' : 'return'}}"
           focus="{{composerFocus}}"
+          fixed="{{true}}"
           adjust-position="{{false}}"
-          auto-height="{{true}}"
-          max-height="180rpx"
+          auto-height="{{false}}"
+          hold-keyboard="{{true}}"
+          disable-default-padding="{{true}}"
+          show-confirm-bar="{{false}}"
+          maxlength="4000"
+          bindinput="onComposerInput"
+          bindconfirm="onComposerConfirm"
+          bindblur="onComposerBlur"
+        />
+        <textarea
+          wx:else
+          class="composer-textarea composer-textarea--compact {{composerOverflow ? 'composer-textarea--overflow' : ''}}"
+          value="{{composerText}}"
+          cursor="{{composerCursor}}"
+          placeholder="{{composerPlaceholder}}"
+          placeholder-class="composer-placeholder"
+          confirm-type="{{isIOS ? 'send' : 'return'}}"
+          focus="{{composerFocus}}"
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          auto-height="{{!composerOverflow}}"
+          hold-keyboard="{{true}}"
+          disable-default-padding="{{true}}"
+          show-confirm-bar="{{false}}"
           maxlength="4000"
           bindinput="onComposerInput"
           bindlinechange="onComposerLineChange"
-          bindconfirm="submitComposerText"
+          bindconfirm="onComposerConfirm"
           bindblur="onComposerBlur"
         />
-        <!-- Collapse/expand to the big edit panel — shown at the textarea's top-right
-             corner only when the in-bar textarea is full. -->
-        <view
-          wx:if="{{expandVisible && !expanded}}"
-          class="composer-expand"
-          bindtap="openExpand"
-        >
-          <view class="expand-icon"></view>
-        </view>
       </view>
 
-        <!-- Voice hold-to-talk: wx:else binds to the keyboard field above (互斥) -->
-        <view
-          wx:else
-          class="composer-field composer-field--voice"
-          bindtouchstart="onComposerTouchStart"
-          bindtouchmove="onComposerTouchMove"
-          bindtouchend="onComposerTouchEnd"
-          bindtouchcancel="onComposerTouchCancel"
-        >
-          <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
-        </view>
+      <view
+        wx:else
+        class="composer-editor composer-editor--voice"
+        bindtouchstart="onComposerTouchStart"
+        bindtouchmove="onComposerTouchMove"
+        bindtouchend="onComposerTouchEnd"
+        bindtouchcancel="onComposerTouchCancel"
+      >
+        <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
+      </view>
 
-      <!-- Right-side actions (send + mode toggle), wrapped in a white outline
-           that stays fixed at the bottom-right even when the textarea grows -->
-      <view class="composer-actions">
+      <!-- Small outlined capsule; expanded mode repositions it over the editor. -->
+      <view class="composer-action-group">
         <view
           wx:if="{{composerMode === 'keyboard' && !isIOS && composerText}}"
-          class="composer-send"
+          class="composer-action composer-action--send"
           bindtap="submitComposerText"
         >
           <view class="send-icon"></view>
         </view>
         <view
-          class="composer-toggle {{voicePhase === 'recording' ? 'disabled' : ''}}"
+          class="composer-action composer-action--toggle {{voicePhase === 'recording' ? 'composer-action--disabled' : ''}}"
           bindtap="onComposerToggle"
         >
           <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">
@@ -235,6 +251,22 @@
           </view>
           <view wx:else class="kb-icon"></view>
         </view>
+      </view>
+
+      <!-- Same visual language as the action dock; always owned by the surface. -->
+      <view
+        wx:if="{{expanded}}"
+        class="composer-corner-control composer-corner-control--expanded"
+        bindtap="closeExpand"
+      >
+        <view class="resize-icon resize-icon--collapse"></view>
+      </view>
+      <view
+        wx:elif="{{expandVisible}}"
+        class="composer-corner-control"
+        bindtap="openExpand"
+      >
+        <view class="resize-icon resize-icon--expand"></view>
       </view>
     </view>
   </view>
@@ -294,56 +326,6 @@
       </picker>
 
       <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存</button>
-    </view>
-  </view>
-
-  <!-- Full-screen edit — the same dark input, scaled up, floating (~80% height) -->
-  <view
-    wx:if="{{expanded}}"
-    class="expand-mask"
-    style="opacity: {{expandMaskOpacity}};"
-    catchtouchmove="noop"
-    bindtap="onExpandMaskTap"
-  >
-    <view
-      class="expand-sheet"
-      style="height: {{expandSheetHeight}}px; transform: translateY({{expandTranslateY + composerLift}}px);"
-    >
-      <!-- Collapse (fold back to the in-bar textarea) — top-right -->
-      <view class="expand-collapse" bindtap="closeExpand">
-        <view class="expand-collapse-icon"></view>
-      </view>
-      <!-- The same textarea, full screen -->
-      <textarea
-        class="expand-input"
-        value="{{composerText}}"
-        placeholder="{{composerPlaceholder}}"
-        placeholder-class="composer-placeholder"
-        confirm-type="send"
-        focus="{{expanded}}"
-        adjust-position="{{false}}"
-        maxlength="4000"
-        bindinput="onComposerInput"
-        bindconfirm="submitComposerText"
-      />
-      <!-- Same right-side actions as the composer bar -->
-      <view class="expand-actions">
-        <view
-          wx:if="{{composerMode === 'keyboard' && !isIOS && composerText}}"
-          class="composer-send"
-          bindtap="submitComposerText"
-        >
-          <view class="send-icon"></view>
-        </view>
-        <view class="composer-toggle" bindtap="onComposerToggle">
-          <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">
-            <view class="wave-arc wave-arc--1"></view>
-            <view class="wave-arc wave-arc--2"></view>
-            <view class="wave-arc wave-arc--3"></view>
-          </view>
-          <view wx:else class="kb-icon"></view>
-        </view>
-      </view>
     </view>
   </view>
 </view>
