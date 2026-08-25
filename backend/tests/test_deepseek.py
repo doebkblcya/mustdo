@@ -154,14 +154,28 @@ class OrganizeValidationTests(unittest.TestCase):
             ],
         )
 
-    def test_respects_six_group_cap(self) -> None:
+    def test_keeps_all_named_groups_without_cap(self) -> None:
         groups = [OrganizeGroupOut(name=f"组{i}", todo_ids=[i]) for i in range(1, 9)]
         result = validate_organize_groups(groups, set(range(1, 9)))
-        # 5 个命名组 + 「其他」收容 = 最多 6 组
-        self.assertEqual(len(result), 6)
-        other = result[-1]
-        self.assertEqual(other["name"], "其他")
-        self.assertEqual(other["todo_ids"], [6, 7, 8])
+        # 组数不截断：AI 返回几组就几组（收敛靠 prompt 提醒）
+        self.assertEqual(len(result), 8)
+
+    def test_ai_other_group_keeps_its_position(self) -> None:
+        groups = [
+            OrganizeGroupOut(name="工作", todo_ids=[1]),
+            OrganizeGroupOut(name="其他", todo_ids=[2]),
+            OrganizeGroupOut(name="个人", todo_ids=[3]),
+        ]
+        result = validate_organize_groups(groups, {1, 2, 3, 4})
+        self.assertEqual(
+            result,
+            [
+                {"name": "工作", "todo_ids": [1]},
+                # 补漏项 4 并入 AI 原位「其他」
+                {"name": "其他", "todo_ids": [2, 4]},
+                {"name": "个人", "todo_ids": [3]},
+            ],
+        )
 
     def test_blank_name_falls_back_to_other(self) -> None:
         result = validate_organize_groups([OrganizeGroupOut(name="  ", todo_ids=[1])], {1, 2})

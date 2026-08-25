@@ -664,6 +664,8 @@ Page({
     this.setData({ items: this.data.items.filter((t) => t.id !== id) });
     this._buildCalendar(); // dot marks follow pending items
     this._syncTodayState(); // entry visibility + auto-leave organize when empty
+    // 组织视图：重建 AI 分组，空组标题自动消失
+    if (this.data.organizeMode) this._renderOrganizeItems();
 
     wx.vibrateShort({ type: "light" });
 
@@ -963,6 +965,8 @@ Page({
       });
       self._buildCalendar(); // dot marks refresh after removal
       self._syncTodayState(); // entry visibility + auto-leave organize when empty
+      // 组织视图：重建 AI 分组，空组标题自动消失
+      if (self.data.organizeMode) self._renderOrganizeItems();
       wx.vibrateShort({ type: 'medium' });
       api.deleteTodo(id).catch(function() {
         // Already removed from UI

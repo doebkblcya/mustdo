@@ -218,9 +218,9 @@ def _organize_system_prompt() -> str:
     return """你是待办事项整理助手。根据待办之间的语义、场景、地点或共同目标，把它们分成几组，每组起一个简短组名。只输出 JSON。
 
 规则：
-1. 组名 2 至 6 个汉字，简短易懂（如“工作”“采购”“个人”）。
+1. 组名 2 至 6 个汉字，要贴合组内待办的实际内容，让用户一眼能看出这组是什么（如“客户跟进”“家务采购”“文档整理”），避免“工作”“采购”“个人”这类笼统的分类名。
 2. 每条待办恰好分到一组；todo_ids 必须是输入列表中的 ID，不要发明 ID。
-3. 最多 6 组。
+3. 分组数量不宜过多，如果分组过多请适当合并同类分组、收敛归类。
 4. 与其他事项关系较弱的待办放入名为“其他”的组。
 5. 只输出 JSON：{"groups":[{"name":"组名","todo_ids":[1,2]}]}""".strip()
 
@@ -243,14 +243,15 @@ def validate_organize_groups(
 
     - todo_ids not present in valid_ids are dropped (foreign IDs).
     - Duplicate IDs keep their first occurrence.
-    - Groups with the same name are merged.
-    - At most 5 named groups; any further groups spill into "其他".
+    - Groups with the same name are merged, preserving order — an AI-generated
+      "其他" group stays where the AI placed it.
     - Todos missing from every group are backfilled into "其他".
-    - "其他" is always last, so the total group count is capped at 6.
+
+    Group count is intentionally unconstrained here: the prompt tells the AI
+    to merge and converge when there are too many groups.
     """
     seen: set[int] = set()
     by_name: dict[str, list[int]] = {}
-    other_ids: list[int] = []
     for group in groups:
         name = " ".join(group.name.strip().split())[:20] or "其他"
         ids: list[int] = []
@@ -260,19 +261,11 @@ def validate_organize_groups(
                 ids.append(todo_id)
         if not ids:
             continue
-        if name == "其他":
-            other_ids.extend(ids)
-        elif len(by_name) < 5:
-            by_name.setdefault(name, []).extend(ids)
-        else:
-            other_ids.extend(ids)
-    other_ids.extend(sorted(valid_ids - seen))
-    result: list[dict[str, object]] = [
-        {"name": name, "todo_ids": todo_ids} for name, todo_ids in by_name.items()
-    ]
-    if other_ids:
-        result.append({"name": "其他", "todo_ids": other_ids})
-    return result
+        by_name.setdefault(name, []).extend(ids)
+    missing = sorted(valid_ids - seen)
+    if missing:
+        by_name.setdefault("其他", []).extend(missing)
+    return [{"name": name, "todo_ids": todo_ids} for name, todo_ids in by_name.items()]
 
 
 async def organize_todos_with_deepseek(
