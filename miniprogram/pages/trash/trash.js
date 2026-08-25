@@ -29,6 +29,9 @@ function daysBetween(aStr, bStr) {
 }
 
 Page({
+  // 请求序号：快速切换 tab 时丢弃过期响应，避免旧列表覆盖新 tab
+  _reqSeq: 0,
+
   data: {
     activeTab: "deleted",
     deletedCount: 0,
@@ -64,15 +67,18 @@ Page({
     });
   },
 
-  async loadList() {
+  async loadList(tab) {
+    var target = tab || this.data.activeTab;
+    var seq = ++this._reqSeq;
     this.setData({ loading: true, error: "" });
     try {
-      var res = await api.listTrash(this.data.activeTab);
+      var res = await api.listTrash(target);
+      if (seq !== this._reqSeq) return; // 过期响应，丢弃
       this.setData({
         deletedCount: res.deleted_count || 0,
         overdueCount: res.overdue_count || 0,
       });
-      this._applyItems(res.items || []);
+      this._applyItems(res.items || [], target);
       this.setData({ loading: false });
     } catch (error) {
       if (error.statusCode === 401) {
@@ -80,6 +86,7 @@ Page({
         wx.redirectTo({ url: "/pages/auth/auth" });
         return;
       }
+      if (seq !== this._reqSeq) return; // 过期失败态，丢弃
       this.setData({ loading: false, error: error.message || "加载失败" });
     }
   },
@@ -88,12 +95,13 @@ Page({
     var tab = event.currentTarget.dataset.tab;
     if (tab === this.data.activeTab) return;
     this.setData({ activeTab: tab });
-    this.loadList();
+    this.loadList(tab);
   },
 
-  _applyItems(rows) {
+  // tab 参数来自发起请求时的值，不读当前 activeTab（防并发错乱）
+  _applyItems(rows, tab) {
     var today = this.data.todayDate;
-    var isDeleted = this.data.activeTab === "deleted";
+    var isDeleted = tab === "deleted";
     var items = rows.map(function(item) {
       var meta = "原定 " + formatDateCN(item.due_date);
       if (item.due_time) meta += " " + item.due_time;

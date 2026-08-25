@@ -165,6 +165,14 @@ Page({
     this._measureTabs();
   },
 
+  // 从垃圾桶返回：恢复/移到今天可能改变主列表，按需刷新（openTrash 时置标记）
+  onShow() {
+    if (this._fromTrash) {
+      this._fromTrash = false;
+      this.loadTodos();
+    }
+  },
+
   onUnload() {
     if (wx.offKeyboardHeightChange) wx.offKeyboardHeightChange();
     this._stopAllSprings();
@@ -263,8 +271,9 @@ Page({
     this._renderCurrentView();
   },
 
-  // 垃圾桶入口（v2-04）：纯入口，无数量提示
+  // 垃圾桶入口（v2-04）：纯入口，无数量提示；返回时 onShow 按需刷新
   openTrash() {
+    this._fromTrash = true;
     wx.navigateTo({ url: "/pages/trash/trash" });
   },
 

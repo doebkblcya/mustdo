@@ -225,6 +225,21 @@ class TrashApiTests(unittest.TestCase):
         self.assertEqual(row["content"], "修改后")
         self.assertIsNotNone(row["deleted_at"])  # 仍处于删除状态
 
+    def test_patch_rejects_non_null_deleted_at(self) -> None:
+        from pydantic import ValidationError
+
+        # 非 null 的 deleted_at 会伪造删除时间、绕过 7 天清理窗口，必须拒绝
+        with self.assertRaises(ValidationError):
+            TodoUpdateRequest(deleted_at="2020-01-01T00:00:00+08:00")
+
+        # 明确传 null（恢复）合法
+        req = TodoUpdateRequest(deleted_at=None)
+        self.assertIn("deleted_at", req.model_fields_set)
+
+        # 不传该字段也合法（编辑其他字段不受影响）
+        req2 = TodoUpdateRequest(content="改内容")
+        self.assertNotIn("deleted_at", req2.model_fields_set)
+
     def test_patch_foreign_or_missing_todo_404(self) -> None:
         uid_a = self._create_user("openid-a")
         uid_b = self._create_user("openid-b")
