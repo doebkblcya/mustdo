@@ -97,6 +97,69 @@
   transform: scale(0.95);
 }
 
+/* Header actions: trash entry + visibility toggle */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.trash-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56rpx;
+  height: 56rpx;
+  padding: 0;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow:
+    0 1rpx 3rpx rgba(0, 0, 0, 0.04),
+    0 4rpx 12rpx rgba(0, 0, 0, 0.06);
+  transition: transform 80ms ease-out;
+}
+
+.trash-button:active {
+  transform: scale(0.95);
+}
+
+.trash-icon {
+  position: relative;
+  width: 30rpx;
+  height: 34rpx;
+}
+
+.trash-lid {
+  position: absolute;
+  top: 2rpx;
+  left: 5rpx;
+  width: 20rpx;
+  height: 6rpx;
+  border-radius: 2rpx;
+  background: #6e6e73;
+}
+
+.trash-bin {
+  position: absolute;
+  left: 3rpx;
+  bottom: 0;
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 4rpx;
+  background: #6e6e73;
+}
+
+.trash-bin::after {
+  content: "";
+  position: absolute;
+  top: 9rpx;
+  left: 5rpx;
+  width: 14rpx;
+  height: 3rpx;
+  border-radius: 2rpx;
+  background: #ffffff;
+}
+
 /* ================================================================
    Segmented control — sync with auth: 68rpx + 5rpx padding + border
    ================================================================ */

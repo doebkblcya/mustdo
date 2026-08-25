@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 
 from app.db import cleanup_sessions, init_db
 from app.errors import http_exception_handler, validation_exception_handler
-from app.routers import auth, invites, todos, voice
+from app.routers import auth, invites, todos, trash, voice
 from app.services.deepseek import close_deepseek_client
 from app.services.wechat import close_wechat_client
 
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(invites.router)
     app.include_router(todos.router)
+    app.include_router(trash.router)
     app.include_router(voice.router)
 
     return app

@@ -263,6 +263,11 @@ Page({
     this._renderCurrentView();
   },
 
+  // 垃圾桶入口（v2-04）：纯入口，无数量提示
+  openTrash() {
+    wx.navigateTo({ url: "/pages/trash/trash" });
+  },
+
   // ========== AI 动态整理（今天视图） ==========
 
   // 今天未完成项的指纹：日期 + 每个待办的 id/content/due_time/pinned/status

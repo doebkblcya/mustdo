@@ -52,12 +52,24 @@ class TodoListResponse(BaseModel):
     groups: TodoGroups
 
 
+class TrashItem(TodoPublic):
+    deleted_at: str | None = None
+
+
+class TrashListResponse(BaseModel):
+    deleted_count: int
+    overdue_count: int
+    items: list[TrashItem]
+
+
 class TodoUpdateRequest(BaseModel):
     content: str | None = Field(default=None, min_length=1, max_length=200)
     due_date: date | None = None
     due_time: str | None = None
     status: Literal["pending", "done"] | None = None
     pinned: bool | None = None
+    # 恢复：软删项可用 deleted_at=None 清除删除标记（v2-02 提醒落地前无提醒字段可清）
+    deleted_at: str | None = None
 
     @field_validator("content")
     @classmethod
