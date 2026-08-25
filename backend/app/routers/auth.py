@@ -3,10 +3,10 @@ from __future__ import annotations
 import sqlite3
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, status
 
 from app.config import get_settings
-from app.deps import bearer_token_from_authorization, current_user, get_db
+from app.deps import current_user, get_db
 from app.errors import raise_api_error
 from app.schemas import AuthTokenResponse, UserPublic, WechatLoginRequest
 from app.security import generate_session_token, hash_session_token
@@ -90,20 +90,6 @@ async def wechat_login(
         token=token,
         needs_invite=invite_redeemed is None,
     )
-
-
-@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(
-    db: sqlite3.Connection = Depends(get_db),
-    authorization: str | None = Header(default=None),
-):
-    token = bearer_token_from_authorization(authorization)
-    if token:
-        db.execute(
-            "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
-            (utcish_now_iso(), hash_session_token(token)),
-        )
-        db.commit()
 
 
 @router.get("/me", response_model=UserPublic)
