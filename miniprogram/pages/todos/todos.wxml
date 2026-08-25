@@ -5,6 +5,7 @@
       <view>
         <text class="wordmark">mustdo</text>
       </view>
+      <button class="visibility-button" bindtap="toggleShowCompleted">{{showCompleted ? '隐藏已完成' : '显示已完成'}}</button>
     </view>
   </view>
 
@@ -60,6 +61,11 @@
     </view>
     </view>
 
+  <view wx:if="{{activeView === 'today' && todayHasPending}}" class="organize-switch">
+    <view class="organize-seg {{organizeMode ? '' : 'organize-seg--active'}}" bindtap="onOrganizeDefaultTap">默认</view>
+    <view class="organize-seg {{organizeMode ? 'organize-seg--active' : ''}}" bindtap="toggleOrganize">AI 整理</view>
+  </view>
+
   <view class="todo-list">
     <!-- Skeleton loading -->
     <block wx:if="{{loading}}">
@@ -71,6 +77,11 @@
         </view>
       </view>
     </block>
+
+    <!-- AI organizing state (today view only) -->
+    <view wx:elif="{{organizing && activeView === 'today'}}" class="organize-loading">
+      <text class="organize-loading-text">AI 正在整理当前事项…</text>
+    </view>
 
     <!-- Error state -->
     <view wx:elif="{{error}}" class="empty-state">
@@ -85,47 +96,56 @@
       <view class="empty-line"></view>
     </view>
 
-    <!-- Todo items -->
+    <!-- Todo items (cards + AI group headers) -->
     <block wx:else>
-      <view
-        wx:for="{{items}}"
-        wx:key="id"
-        class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}"
-      >
-        <view class="swipe-zone swipe-zone--pin">
-          <view class="swipe-icon-img swipe-icon--pin"></view>
-        </view>
-        <view
-          class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
-          style="transform: translateX({{item.swipeX || 0}}px);"
-          data-index="{{index}}"
-          bindtouchstart="onItemTouchStart"
-          bindtouchmove="onItemTouchMove"
-          bindtouchend="onItemTouchEnd"
-        >
-          <button
-            class="check-button"
-            style="transform: scale({{item.checkScale || 1}});"
-            data-id="{{item.id}}"
-            data-status="{{item.status}}"
-            data-index="{{index}}"
-            bindtap="toggleTodo"
-          >
-            {{item.status === 'done' ? '✓' : ''}}
-          </button>
-          <view class="todo-content">
-            <text class="todo-title">{{item.content}}</text>
-            <text class="todo-meta">{{item.meta}}</text>
+      <view wx:for="{{items}}" wx:key="key">
+        <!-- AI organize: group title row -->
+        <view wx:if="{{item.__header}}" class="organize-group-title">{{item.name}}</view>
+        <!-- Regular todo card -->
+        <view wx:else class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}">
+          <view class="swipe-zone swipe-zone--pin">
+            <view class="swipe-icon-img swipe-icon--pin"></view>
           </view>
-          <button class="edit-btn" data-id="{{item.id}}" bindtap="editTodo">
-            <view class="edit-icon">
-              <view class="edit-frame"></view>
-              <view class="edit-stroke"></view>
+          <view
+            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
+            style="transform: translateX({{item.swipeX || 0}}px);"
+            data-index="{{index}}"
+            bindtouchstart="onItemTouchStart"
+            bindtouchmove="onItemTouchMove"
+            bindtouchend="onItemTouchEnd"
+          >
+            <button
+              class="check-button"
+              style="transform: scale({{item.checkScale || 1}});"
+              data-id="{{item.id}}"
+              data-status="{{item.status}}"
+              data-index="{{index}}"
+              bindtap="toggleTodo"
+            >
+              {{item.status === 'done' ? '✓' : ''}}
+            </button>
+            <view class="todo-content">
+              <text class="todo-title">{{item.content}}</text>
+              <text class="todo-meta">{{item.meta}}</text>
             </view>
-          </button>
-        </view>
-        <view class="swipe-zone swipe-zone--delete">
-          <view class="swipe-icon-img swipe-icon--trash"></view>
+            <button
+              wx:if="{{item.status === 'pending' && activeView === 'today'}}"
+              class="tomorrow-btn"
+              data-id="{{item.id}}"
+              bindtap="moveToTomorrow"
+            >
+              <view class="tomorrow-icon"></view>
+            </button>
+            <button class="edit-btn" data-id="{{item.id}}" bindtap="editTodo">
+              <view class="edit-icon">
+                <view class="edit-frame"></view>
+                <view class="edit-stroke"></view>
+              </view>
+            </button>
+          </view>
+          <view class="swipe-zone swipe-zone--delete">
+            <view class="swipe-icon-img swipe-icon--trash"></view>
+          </view>
         </view>
       </view>
     </block>

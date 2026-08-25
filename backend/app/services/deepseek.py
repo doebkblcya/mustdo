@@ -198,3 +198,125 @@ def _loads_deepseek_json(content: object) -> object:
 def _format_parse_detail(exc: Exception, content: object) -> str:
     preview = content[:300] if isinstance(content, str) else repr(content)
     return f"{type(exc).__name__}: {exc}; content={preview!r}"
+
+
+# ============================================================
+# AI 动态整理（今天视图）
+# ============================================================
+
+
+class OrganizeGroupOut(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+    todo_ids: list[int] = Field(default_factory=list)
+
+
+class OrganizePayload(BaseModel):
+    groups: list[OrganizeGroupOut] = Field(default_factory=list)
+
+
+def _organize_system_prompt() -> str:
+    return """你是待办事项整理助手。根据待办之间的语义、场景、地点或共同目标，把它们分成几组，每组起一个简短组名。只输出 JSON。
+
+规则：
+1. 组名 2 至 6 个汉字，简短易懂（如“工作”“采购”“个人”）。
+2. 每条待办恰好分到一组；todo_ids 必须是输入列表中的 ID，不要发明 ID。
+3. 最多 6 组。
+4. 与其他事项关系较弱的待办放入名为“其他”的组。
+5. 只输出 JSON：{"groups":[{"name":"组名","todo_ids":[1,2]}]}""".strip()
+
+
+def _organize_user_prompt(view: str, items: list[dict[str, object]]) -> str:
+    lines = []
+    for item in items:
+        line = f"{item['id']}. {item['content']}"
+        if item.get("due_time"):
+            line += f"（{item['due_time']}）"
+        lines.append(line)
+    return f"当前视图：{view}\n待办列表（ID. 内容（时间））：\n" + "\n".join(lines)
+
+
+def validate_organize_groups(
+    groups: list[OrganizeGroupOut],
+    valid_ids: set[int],
+) -> list[dict[str, object]]:
+    """Normalize AI grouping output.
+
+    - todo_ids not present in valid_ids are dropped (foreign IDs).
+    - Duplicate IDs keep their first occurrence.
+    - Groups with the same name are merged.
+    - At most 5 named groups; any further groups spill into "其他".
+    - Todos missing from every group are backfilled into "其他".
+    - "其他" is always last, so the total group count is capped at 6.
+    """
+    seen: set[int] = set()
+    by_name: dict[str, list[int]] = {}
+    other_ids: list[int] = []
+    for group in groups:
+        name = " ".join(group.name.strip().split())[:20] or "其他"
+        ids: list[int] = []
+        for todo_id in group.todo_ids:
+            if todo_id in valid_ids and todo_id not in seen:
+                seen.add(todo_id)
+                ids.append(todo_id)
+        if not ids:
+            continue
+        if name == "其他":
+            other_ids.extend(ids)
+        elif len(by_name) < 5:
+            by_name.setdefault(name, []).extend(ids)
+        else:
+            other_ids.extend(ids)
+    other_ids.extend(sorted(valid_ids - seen))
+    result: list[dict[str, object]] = [
+        {"name": name, "todo_ids": todo_ids} for name, todo_ids in by_name.items()
+    ]
+    if other_ids:
+        result.append({"name": "其他", "todo_ids": other_ids})
+    return result
+
+
+async def organize_todos_with_deepseek(
+    view: str,
+    items: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    settings = get_settings()
+    if not settings.deepseek_api_key:
+        raise DeepSeekParseError("DeepSeek 配置缺失")
+
+    payload = {
+        "model": settings.deepseek_model,
+        "messages": [
+            {"role": "system", "content": _organize_system_prompt()},
+            {"role": "user", "content": _organize_user_prompt(view, items)},
+        ],
+        "response_format": {"type": "json_object"},
+        "thinking": {"type": "disabled"},
+        "temperature": 0.1,
+        "max_tokens": 1200,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.deepseek_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    content = None
+    try:
+        client = get_deepseek_client()
+        response = await client.post(
+            f"{settings.deepseek_base_url.rstrip('/')}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        parsed = OrganizePayload.model_validate(_loads_deepseek_json(content))
+    except httpx.HTTPStatusError as exc:
+        detail = f"status={exc.response.status_code} body={exc.response.text[:300]}"
+        raise DeepSeekParseError("DeepSeek 请求失败", detail=detail) from exc
+    except httpx.HTTPError as exc:
+        raise DeepSeekParseError("整理服务连接失败", detail=repr(exc)) from exc
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
+        detail = _format_parse_detail(exc, content)
+        raise DeepSeekParseError("DeepSeek 返回格式不合法", detail=detail) from exc
+
+    return validate_organize_groups(parsed.groups, {item["id"] for item in items})

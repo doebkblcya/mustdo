@@ -147,6 +147,13 @@ function createTodosFromTranscript(transcript, source) {
   });
 }
 
+function organizeTodos(data) {
+  return request("/api/todos/organize", {
+    method: "POST",
+    data: data
+  });
+}
+
 function uploadVoice(filePath) {
   return uploadVoiceOnce(filePath, false);
 }
@@ -304,6 +311,7 @@ module.exports = {
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,
   createTodosFromTranscript: createTodosFromTranscript,
+  organizeTodos: organizeTodos,
   uploadVoice: uploadVoice,
   request: request,
   // Spring physics

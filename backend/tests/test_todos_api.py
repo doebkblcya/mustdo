@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -15,7 +16,8 @@ from fastapi import HTTPException  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_connection, init_db  # noqa: E402
-from app.routers.todos import delete_todo  # noqa: E402
+from app.routers.todos import delete_todo, organize_todos  # noqa: E402
+from app.schemas import OrganizeRequest  # noqa: E402
 from app.time_utils import now_shanghai, today_date  # noqa: E402
 
 
@@ -94,6 +96,44 @@ class TodoApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 404)
         self.assertEqual(raised.exception.detail["code"], "todo_not_found")
         self.assertEqual(raised.exception.detail["message"], "待办不存在")
+
+    def test_organize_rejects_foreign_todo(self) -> None:
+        user_id, _todo_id = self._create_todo()
+        db = get_connection()
+        try:
+            payload = OrganizeRequest(
+                view="today",
+                items=[{"id": 999999, "content": "外部待办", "due_time": None}],
+            )
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(organize_todos(payload, db=db, user={"id": user_id}))
+        finally:
+            db.close()
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail["code"], "todos_not_owned")
+
+    def test_organize_returns_validated_groups(self) -> None:
+        user_id, todo_id = self._create_todo()
+        db = get_connection()
+        payload = OrganizeRequest(
+            view="today",
+            items=[{"id": todo_id, "content": "测试删除", "due_time": None}],
+        )
+        fake_groups = [{"name": "工作", "todo_ids": [todo_id]}]
+        with patch(
+            "app.routers.todos.organize_todos_with_deepseek",
+            new=AsyncMock(return_value=fake_groups),
+        ):
+            try:
+                result = asyncio.run(organize_todos(payload, db=db, user={"id": user_id}))
+            finally:
+                db.close()
+
+        self.assertEqual(result.view, "today")
+        self.assertEqual(len(result.groups), 1)
+        self.assertEqual(result.groups[0].name, "工作")
+        self.assertEqual(result.groups[0].todo_ids, [todo_id])
 
 
 if __name__ == "__main__":

@@ -15,8 +15,11 @@ from app.config import get_settings  # noqa: E402
 from app.services.deepseek import (  # noqa: E402
     DeepSeekParseError,
     NoTodoParsedError,
+    OrganizeGroupOut,
     _loads_deepseek_json,
+    organize_todos_with_deepseek,
     parse_todos_with_deepseek,
+    validate_organize_groups,
 )
 from app.time_utils import today_date  # noqa: E402
 
@@ -116,6 +119,98 @@ class DeepSeekParserTests(unittest.TestCase):
                 asyncio.run(parse_todos_with_deepseek("今天天气不错"))
 
         self.assertEqual(str(raised.exception), "没有识别到需要新增的待办")
+
+
+class OrganizeValidationTests(unittest.TestCase):
+    """Deterministic checks on validate_organize_groups (no AI involved)."""
+
+    def test_drops_foreign_ids_and_dedupes(self) -> None:
+        groups = [
+            OrganizeGroupOut(name="工作", todo_ids=[1, 999]),
+            OrganizeGroupOut(name="采购", todo_ids=[2, 2, 3]),
+        ]
+        result = validate_organize_groups(groups, {1, 2, 3, 4})
+        self.assertEqual(
+            result,
+            [
+                {"name": "工作", "todo_ids": [1]},
+                {"name": "采购", "todo_ids": [2, 3]},
+                {"name": "其他", "todo_ids": [4]},
+            ],
+        )
+
+    def test_merges_same_name_and_backfills_other(self) -> None:
+        groups = [
+            OrganizeGroupOut(name="工作", todo_ids=[1]),
+            OrganizeGroupOut(name="工作", todo_ids=[2]),
+            OrganizeGroupOut(name="其他", todo_ids=[3]),
+        ]
+        result = validate_organize_groups(groups, {1, 2, 3, 4})
+        self.assertEqual(
+            result,
+            [
+                {"name": "工作", "todo_ids": [1, 2]},
+                {"name": "其他", "todo_ids": [3, 4]},
+            ],
+        )
+
+    def test_respects_six_group_cap(self) -> None:
+        groups = [OrganizeGroupOut(name=f"组{i}", todo_ids=[i]) for i in range(1, 9)]
+        result = validate_organize_groups(groups, set(range(1, 9)))
+        # 5 个命名组 + 「其他」收容 = 最多 6 组
+        self.assertEqual(len(result), 6)
+        other = result[-1]
+        self.assertEqual(other["name"], "其他")
+        self.assertEqual(other["todo_ids"], [6, 7, 8])
+
+    def test_blank_name_falls_back_to_other(self) -> None:
+        result = validate_organize_groups([OrganizeGroupOut(name="  ", todo_ids=[1])], {1, 2})
+        self.assertEqual(result, [{"name": "其他", "todo_ids": [1, 2]}])
+
+
+class OrganizeDeepSeekTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.env = patch.dict(
+            os.environ,
+            {
+                "DEEPSEEK_API_KEY": "test-key",
+                "DEEPSEEK_MODEL": "deepseek-v4-flash",
+            },
+            clear=False,
+        )
+        self.env.start()
+        get_settings.cache_clear()
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        get_settings.cache_clear()
+
+    def test_organize_calls_deepseek_and_validates(self) -> None:
+        FakeDeepSeekClient.response_content = '{"groups":[{"name":"工作","todo_ids":[12,15]}]}'
+        FakeDeepSeekClient.last_json = None
+        items = [
+            {"id": 12, "content": "写周报", "due_time": "17:00"},
+            {"id": 15, "content": "回复客户", "due_time": None},
+            {"id": 18, "content": "买牛奶", "due_time": None},
+        ]
+
+        with patch("app.services.deepseek.httpx.AsyncClient", FakeDeepSeekClient):
+            result = asyncio.run(organize_todos_with_deepseek("today", items))
+
+        # AI 漏掉的 18 被补入「其他」
+        self.assertEqual(
+            result,
+            [
+                {"name": "工作", "todo_ids": [12, 15]},
+                {"name": "其他", "todo_ids": [18]},
+            ],
+        )
+        last = FakeDeepSeekClient.last_json
+        self.assertEqual(last["thinking"], {"type": "disabled"})
+        self.assertEqual(last["response_format"], {"type": "json_object"})
+        user_msg = last["messages"][1]["content"]
+        self.assertIn("12. 写周报（17:00）", user_msg)
+        self.assertIn("15. 回复客户", user_msg)
 
 
 if __name__ == "__main__":

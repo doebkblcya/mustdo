@@ -11,6 +11,12 @@ const VIEW_META = {
   upcoming: "后续",
 };
 
+// Display preference — hide/show completed items (persisted locally)
+const SHOW_COMPLETED_KEY = "mustdo_show_completed";
+
+// AI 动态整理（今天视图）缓存：{fingerprint, groups}
+const ORGANIZE_CACHE_KEY = "mustdo_organize_today";
+
 // "2026-08-20" → "8月20日"
 function formatDateCN(dateStr) {
   if (!dateStr) return "";
@@ -53,6 +59,14 @@ Page({
     todos: null,
     loading: false,
     error: "",
+    showCompleted: true, // hide/show completed items — read from storage in onLoad
+
+    // AI organize (today view)
+    organizeMode: false, // 当前是否展示 AI 分组视图
+    organizing: false,   // 正在请求后端整理
+    organizeError: "",
+    organizeGroups: [],  // [{name, todo_ids}] 缓存结构
+    todayHasPending: false, // 今天是否有未完成项（决定入口显示）
 
     // Voice
     voicePhase: "idle",
@@ -129,7 +143,11 @@ Page({
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
     }
-    this.setData({ user: api.getStoredUser() });
+    this.setData({
+      user: api.getStoredUser(),
+      // First launch defaults to showing completed items (undefined → true)
+      showCompleted: wx.getStorageSync(SHOW_COMPLETED_KEY) !== false,
+    });
     this.setupRecorder();
 
     // iOS keeps the send action on the keyboard confirm key (no in-bar arrow)
@@ -207,6 +225,7 @@ Page({
       const todos = await api.listTodos();
       this.setData({ todos, loading: false, todayDate: todos.today_date || "" });
       this.applyActiveView(this.data.activeView);
+      this._syncTodayState();
       this._buildCalendar();
       if (this.data.selectedDate) {
         this.applyDateFilter(this.data.selectedDate);
@@ -222,23 +241,179 @@ Page({
     }
   },
 
-  applyActiveView(view) {
-    const todos = this.data.todos;
-    const groups = todos && todos.groups ? todos.groups : {};
-    const date = view === "today" ? todos && todos.today_date : view === "tomorrow" ? todos && todos.tomorrow_date : "";
-    const items = (groups[view] || []).map((item) => ({
+  // Render-layer filter: hide completed items without touching todos.groups
+  _filterVisible(items) {
+    if (this.data.showCompleted) return items;
+    return items.filter((item) => item.status !== "done");
+  },
+
+  // Rebuild the current view from todos.groups (respects visibility + date filter)
+  _renderCurrentView() {
+    if (this.data.selectedDate) {
+      this.applyDateFilter(this.data.selectedDate);
+    } else {
+      this.applyActiveView(this.data.activeView);
+    }
+  },
+
+  toggleShowCompleted() {
+    const next = !this.data.showCompleted;
+    this.setData({ showCompleted: next });
+    wx.setStorageSync(SHOW_COMPLETED_KEY, next);
+    this._renderCurrentView();
+  },
+
+  // ========== AI 动态整理（今天视图） ==========
+
+  // 今天未完成项的指纹：日期 + 每个待办的 id/content/due_time/pinned/status
+  _organizeFingerprint(pendingItems) {
+    const today = this.data.todayDate || "";
+    const parts = pendingItems
+      .map((t) => `${t.id}:${t.content}:${t.due_time || ""}:${t.pinned ? 1 : 0}:${t.status}`)
+      .join("|");
+    const s = today + "|" + parts;
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    }
+    return (h >>> 0).toString(36);
+  },
+
+  _todayPendingItems() {
+    const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
+    return (groups.today || []).filter((t) => t.status === "pending");
+  },
+
+  toggleOrganize() {
+    if (this.data.organizing) return;
+    if (!this.data.organizeMode) {
+      this._enterOrganize();
+    } else {
+      // 已在 AI 视图：再次点击 = 手动重新整理（把未分组任务一并纳入）
+      this._requestOrganize();
+    }
+  },
+
+  onOrganizeDefaultTap() {
+    if (this.data.organizing) return;
+    if (!this.data.organizeMode) return;
+    this.setData({ organizeMode: false, organizeError: "" });
+    this._renderCurrentView();
+  },
+
+  _enterOrganize() {
+    const pending = this._todayPendingItems();
+    if (!pending.length) return;
+    const fingerprint = this._organizeFingerprint(pending);
+    const cached = wx.getStorageSync(ORGANIZE_CACHE_KEY);
+    if (cached && cached.fingerprint === fingerprint && Array.isArray(cached.groups)) {
+      // 任务集合未变化：直接复用缓存
+      this.setData({ organizeMode: true, organizeGroups: cached.groups, organizeError: "" });
+      this.applyActiveView(this.data.activeView);
+      return;
+    }
+    this._requestOrganize(fingerprint);
+  },
+
+  _requestOrganize(fingerprint) {
+    const pending = this._todayPendingItems();
+    if (!pending.length) return;
+    const fp = fingerprint || this._organizeFingerprint(pending);
+    this.setData({ organizeMode: true, organizing: true, organizeError: "" });
+    api.organizeTodos({
+      view: "today",
+      items: pending.map((t) => ({ id: t.id, content: t.content, due_time: t.due_time })),
+    })
+      .then((res) => {
+        const groups = (res && res.groups) || [];
+        wx.setStorageSync(ORGANIZE_CACHE_KEY, { fingerprint: fp, groups });
+        this.setData({ organizing: false, organizeGroups: groups });
+        this.applyActiveView(this.data.activeView);
+      })
+      .catch((err) => {
+        // 失败：提示后自动切回默认视图
+        this.setData({ organizing: false, organizeMode: false, organizeGroups: [] });
+        this._renderCurrentView();
+        wx.showToast({ title: err.message || "AI 整理失败", icon: "none" });
+      });
+  },
+
+  // AI 分组视图渲染：组标题行 + 组内卡片；未分组任务（整理后新增）单独成区
+  _renderOrganizeItems(patch) {
+    const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
+    const base = (groups.today || []).map((item) => ({
       ...item,
       pinned: Boolean(item.pinned),
       meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
       checkScale: 1,
       deleting: false,
+      key: item.id,
     }));
-    this.setData({
+    const visible = this._filterVisible(base);
+    if (!visible.length) {
+      // 组内全部清空（含隐藏偏好）→ 自动回到默认视图
+      this.setData({ ...(patch || {}), organizeMode: false, organizeGroups: [], items: [] });
+      return;
+    }
+    const org = this.data.organizeGroups || [];
+    const groupedIds = {};
+    org.forEach((g) => (g.todo_ids || []).forEach((id) => { groupedIds[id] = true; }));
+    const items = [];
+    org.forEach((g) => {
+      const members = visible
+        .filter((t) => (g.todo_ids || []).indexOf(t.id) !== -1)
+        .sort(_todoSort);
+      if (members.length) {
+        items.push({ __header: true, name: g.name, key: "h-" + items.length });
+        items.push(...members);
+      }
+    });
+    const ungrouped = visible.filter((t) => !groupedIds[t.id]);
+    if (ungrouped.length) {
+      items.push({ __header: true, name: "未分组", key: "h-" + items.length });
+      items.push(...ungrouped.sort(_todoSort));
+    }
+    this.setData({ ...(patch || {}), items });
+  },
+
+  _refreshTodayHasPending() {
+    const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
+    this.setData({ todayHasPending: (groups.today || []).some((t) => t.status === "pending") });
+  },
+
+  // 今天待办集合变化后的统一刷新：入口可见性 + AI 视图清空时回默认
+  _syncTodayState() {
+    this._refreshTodayHasPending();
+    if (this.data.organizeMode && !this.data.todayHasPending) {
+      this.setData({ organizeMode: false, organizeGroups: [] });
+      this._renderCurrentView();
+    }
+  },
+
+  applyActiveView(view) {
+    const todos = this.data.todos;
+    const groups = todos && todos.groups ? todos.groups : {};
+    const date = view === "today" ? todos && todos.today_date : view === "tomorrow" ? todos && todos.tomorrow_date : "";
+    const patch = {
       activeView: view,
       viewTitle: VIEW_META[view],
       viewDate: date || "",
-      items,
-    });
+    };
+    if (this.data.organizeMode && view === "today") {
+      this._renderOrganizeItems(patch);
+      return;
+    }
+    const items = this._filterVisible(
+      (groups[view] || []).map((item) => ({
+        ...item,
+        pinned: Boolean(item.pinned),
+        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+        checkScale: 1,
+        deleting: false,
+        key: item.id,
+      }))
+    );
+    this.setData({ ...patch, items });
   },
 
   switchView(event) {
@@ -436,16 +611,18 @@ Page({
     const todos = this.data.todos;
     const groups = todos && todos.groups ? todos.groups : {};
     const all = [].concat(groups.today || [], groups.tomorrow || [], groups.upcoming || []);
-    const items = all
-      .filter((t) => t.due_date === dateStr)
-      .map((item) => ({
-        ...item,
-        pinned: Boolean(item.pinned),
-        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
-        checkScale: 1,
-        deleting: false,
-      }))
-      .sort(_todoSort);
+    const items = this._filterVisible(
+      all
+        .filter((t) => t.due_date === dateStr)
+        .map((item) => ({
+          ...item,
+          pinned: Boolean(item.pinned),
+          meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+          checkScale: 1,
+          deleting: false,
+          key: item.id,
+        }))
+    ).sort(_todoSort);
     this.setData({ items, viewTitle: formatDateCN(dateStr), viewDate: dateStr });
   },
 
@@ -457,6 +634,57 @@ Page({
   },
 
   // ========== Todo actions ==========
+
+  // 一键移到明天：乐观移组 → PATCH due_date → 失败按 ID 回滚到原分组原位置
+  moveToTomorrow(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const todos = this.data.todos;
+    if (!todos || !todos.groups) return;
+    const tomorrow = todos.tomorrow_date;
+    if (!tomorrow) return;
+
+    // Locate the item in the today group (only today's pending items can move)
+    let fromGroup = "today";
+    let fromIndex = -1;
+    let item = null;
+    const todayGroup = todos.groups.today || [];
+    fromIndex = todayGroup.findIndex((t) => t.id === id);
+    item = fromIndex !== -1 ? todayGroup[fromIndex] : null;
+    if (!item || item.status !== "pending") return;
+
+    // Optimistic: leave source group → join tomorrow (content/time/pinned kept)
+    const groups = { ...todos.groups };
+    groups[fromGroup] = groups[fromGroup].filter((t) => t.id !== id);
+    groups.tomorrow = (groups.tomorrow || [])
+      .concat({ ...item, due_date: tomorrow })
+      .sort(_todoSort);
+    this.data.todos = { ...todos, groups };
+
+    // Leave the rendered list (entry is only on the today view)
+    this.setData({ items: this.data.items.filter((t) => t.id !== id) });
+    this._buildCalendar(); // dot marks follow pending items
+    this._syncTodayState(); // entry visibility + auto-leave organize when empty
+
+    wx.vibrateShort({ type: "light" });
+
+    api
+      .updateTodo(id, { due_date: tomorrow })
+      .then(() => {
+        wx.showToast({ title: "已移到明天", icon: "none" });
+      })
+      .catch((err) => {
+        // Roll back by id — restore original group & position
+        const groups2 = { ...this.data.todos.groups };
+        groups2.tomorrow = groups2.tomorrow.filter((t) => t.id !== id);
+        const restored = [...(groups2[fromGroup] || [])];
+        restored.splice(Math.min(fromIndex, restored.length), 0, item);
+        groups2[fromGroup] = restored;
+        this.data.todos = { ...this.data.todos, groups: groups2 };
+        this._renderCurrentView();
+        this._buildCalendar();
+        wx.showToast({ title: err.message || "操作失败", icon: "none" });
+      });
+  },
 
   async toggleTodo(event) {
     const id = Number(event.currentTarget.dataset.id);
@@ -474,17 +702,32 @@ Page({
     this.setData({ items });
     this.patchGroupItem(id, { status: newStatus });
     this._buildCalendar(); // pending ⇄ done changes the dot marks
+    this._syncTodayState(); // entry visibility + auto-leave organize when empty
 
     wx.vibrateShort({ type: "light" });
 
     try {
       await api.updateTodo(id, { status: newStatus });
+      // Hidden-completed mode: let the check bounce finish, then drop the item
+      if (newStatus === "done" && !this.data.showCompleted) {
+        setTimeout(() => {
+          // Skip if the preference was switched back to showing in the meantime
+          if (this.data.showCompleted) return;
+          const item = this.data.items.find((i) => i.id === id);
+          if (item && item.status === "done") {
+            if (this.data.organizeMode) {
+              // Rebuild the organize view (drops empty group headers, recomputes 未分组)
+              this._renderOrganizeItems();
+            } else {
+              this.setData({ items: this.data.items.filter((i) => i.id !== id) });
+            }
+          }
+        }, 380);
+      }
     } catch (error) {
-      const revertedItems = this.data.items.map((item) =>
-        item.id === id ? { ...item, status: currentStatus } : item
-      );
-      this.setData({ items: revertedItems });
       this.patchGroupItem(id, { status: currentStatus });
+      // Rebuild the view — restores the item if it was already removed
+      this._renderCurrentView();
       wx.showToast({ title: error.message || "操作失败", icon: "none" });
     }
   },
@@ -665,23 +908,33 @@ Page({
   _doPin(id, currentPinned) {
     var newPinned = !currentPinned;
 
-    // Optimistic update + local sort (find by id, not index — sort-safe)
-    var items = this.data.items.map(function(item) {
-      return item.id === id ? { ...item, pinned: newPinned } : item;
-    });
-    this.setData({ items: items.sort(_todoSort) });
-    this.patchGroupItem(id, { pinned: newPinned });
+    if (this.data.organizeMode) {
+      // AI 分组视图：组内按 _todoSort 重排（组标题行保持位置）
+      this.patchGroupItem(id, { pinned: newPinned });
+      this._renderOrganizeItems();
+    } else {
+      // Optimistic update + local sort (find by id, not index — sort-safe)
+      var items = this.data.items.map(function(item) {
+        return item.id === id ? { ...item, pinned: newPinned } : item;
+      });
+      this.setData({ items: items.sort(_todoSort) });
+      this.patchGroupItem(id, { pinned: newPinned });
+    }
 
     wx.vibrateShort({ type: 'light' });
 
     var self = this;
     api.updateTodo(id, { pinned: newPinned }).catch(function(err) {
       // Revert on failure — find by id
-      var reverted = self.data.items.map(function(item) {
-        return item.id === id ? { ...item, pinned: currentPinned } : item;
-      });
-      self.setData({ items: reverted.sort(_todoSort) });
       self.patchGroupItem(id, { pinned: currentPinned });
+      if (self.data.organizeMode) {
+        self._renderOrganizeItems();
+      } else {
+        var reverted = self.data.items.map(function(item) {
+          return item.id === id ? { ...item, pinned: currentPinned } : item;
+        });
+        self.setData({ items: reverted.sort(_todoSort) });
+      }
       console.error('置顶操作失败:', err);
     });
   },
@@ -709,6 +962,7 @@ Page({
         todos: self.removeFromGroups(prevTodos, id),
       });
       self._buildCalendar(); // dot marks refresh after removal
+      self._syncTodayState(); // entry visibility + auto-leave organize when empty
       wx.vibrateShort({ type: 'medium' });
       api.deleteTodo(id).catch(function() {
         // Already removed from UI

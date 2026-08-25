@@ -101,3 +101,33 @@ class AiCreateResponse(BaseModel):
     transcript: str
     items: list[TodoPublic]
     message: str | None = None
+
+
+class OrganizeItem(BaseModel):
+    id: int
+    content: str = Field(min_length=1, max_length=200)
+    due_time: str | None = None
+
+    @field_validator("due_time")
+    @classmethod
+    def validate_due_time(cls, value: str | None) -> str | None:
+        if value in {"", None}:
+            return None
+        if not TIME_RE.fullmatch(value):
+            raise ValueError("due_time must be HH:MM")
+        return value
+
+
+class OrganizeRequest(BaseModel):
+    view: Literal["today", "tomorrow"] = "today"
+    items: list[OrganizeItem] = Field(min_length=1, max_length=200)
+
+
+class OrganizeGroup(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+    todo_ids: list[int]
+
+
+class OrganizeResponse(BaseModel):
+    view: Literal["today", "tomorrow"]
+    groups: list[OrganizeGroup]
