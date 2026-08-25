@@ -52,12 +52,32 @@ class TodoListResponse(BaseModel):
     groups: TodoGroups
 
 
+class TrashItem(TodoPublic):
+    deleted_at: str | None = None
+
+
+class TrashListResponse(BaseModel):
+    deleted_count: int
+    overdue_count: int
+    items: list[TrashItem]
+
+
 class TodoUpdateRequest(BaseModel):
     content: str | None = Field(default=None, min_length=1, max_length=200)
     due_date: date | None = None
     due_time: str | None = None
     status: Literal["pending", "done"] | None = None
     pinned: bool | None = None
+    # 恢复：软删项可用 deleted_at=None 清除删除标记（v2-02 提醒落地前无提醒字段可清）
+    # 只允许 null：非 null 值可伪造删除时间、绕过 DELETE 与 7 天清理窗口
+    deleted_at: str | None = None
+
+    @field_validator("deleted_at")
+    @classmethod
+    def validate_deleted_at(cls, value: str | None) -> str | None:
+        if value is not None:
+            raise ValueError("deleted_at must be null to restore")
+        return value
 
     @field_validator("content")
     @classmethod

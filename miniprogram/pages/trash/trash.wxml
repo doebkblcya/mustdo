@@ -1,0 +1,88 @@
+<view class="trash-page page">
+  <!-- 说明 -->
+  <view class="section-card section-note">
+    <text class="note-text">已删除和逾期事项最多保留 7 天</text>
+  </view>
+
+  <!-- 视图切换 + 列表 -->
+  <view class="section-card section-body">
+    <view class="trash-tabs">
+      <button class="trash-tab {{activeTab === 'deleted' ? 'active' : ''}}" data-tab="deleted" bindtap="switchTab">已删除 {{deletedCount}}</button>
+      <button class="trash-tab {{activeTab === 'overdue' ? 'active' : ''}}" data-tab="overdue" bindtap="switchTab">已逾期 {{overdueCount}}</button>
+    </view>
+
+    <view class="todo-list">
+      <view wx:if="{{loading}}" class="empty-state">
+        <view class="empty-line"></view>
+        <text class="empty-desc">加载中…</text>
+      </view>
+
+      <view wx:elif="{{error}}" class="empty-state">
+        <text class="empty-desc">{{error}}</text>
+        <button class="action-btn" bindtap="loadList">重试</button>
+      </view>
+
+      <view wx:elif="{{items.length === 0}}" class="empty-state">
+        <view class="empty-line"></view>
+        <text class="empty-desc">{{activeTab === 'deleted' ? '暂无已删除事项' : '暂无逾期待办'}}</text>
+      </view>
+
+      <block wx:else>
+        <view wx:for="{{items}}" wx:key="key" class="trash-item">
+          <view class="trash-item-main">
+            <text class="trash-item-title {{item.status === 'done' ? 'done' : ''}}">{{item.content}}</text>
+            <text class="trash-item-meta">{{item.meta}}</text>
+          </view>
+          <view class="trash-item-actions">
+            <block wx:if="{{activeTab === 'deleted'}}">
+              <button class="action-btn action-btn--primary" data-id="{{item.id}}" bindtap="onRestore">恢复</button>
+            </block>
+            <block wx:else>
+              <button class="action-btn" data-id="{{item.id}}" bindtap="onMoveToday">移到今天</button>
+              <button class="action-btn" data-id="{{item.id}}" bindtap="onEdit">编辑</button>
+              <button class="action-btn action-btn--check" data-id="{{item.id}}" bindtap="onToggleDone">✓</button>
+              <button class="action-btn action-btn--danger" data-id="{{item.id}}" bindtap="onDelete">删除</button>
+            </block>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 编辑 bottom sheet（简化版） -->
+  <view wx:if="{{editVisible}}" class="sheet-mask" catchtouchmove="noop" bindtap="onMaskTap">
+    <view class="edit-sheet">
+      <view class="sheet-head">
+        <text class="sheet-title">修改待办</text>
+        <button class="sheet-close" bindtap="cancelEdit">✕</button>
+      </view>
+
+      <input
+        class="field edit-field"
+        value="{{editContent}}"
+        placeholder="待办内容"
+        placeholder-class="edit-placeholder"
+        confirm-type="done"
+        bindinput="onEditContentInput"
+      />
+
+      <view class="edit-row">
+        <text class="edit-label">日期</text>
+        <picker mode="date" value="{{editDate}}" start="{{todayDate}}" bindchange="onEditDateChange">
+          <view class="picker-value">{{editDate}}</view>
+        </picker>
+      </view>
+
+      <view class="edit-row">
+        <text class="edit-label">时间</text>
+        <switch checked="{{editUseTime}}" color="#1d1d1f" bindchange="onEditUseTimeChange" />
+      </view>
+
+      <picker wx:if="{{editUseTime}}" mode="time" value="{{editTime}}" bindchange="onEditTimeChange">
+        <view class="time-picker">{{editTime}}</view>
+      </picker>
+
+      <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存</button>
+    </view>
+  </view>
+</view>

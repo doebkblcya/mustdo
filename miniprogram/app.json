@@ -1,7 +1,8 @@
 {
   "pages": [
     "pages/auth/auth",
-    "pages/todos/todos"
+    "pages/todos/todos",
+    "pages/trash/trash"
   ],
   "window": {
     "navigationBarTitleText": "mustdo",

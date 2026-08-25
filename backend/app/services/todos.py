@@ -77,19 +77,27 @@ def get_owned_todo(db: sqlite3.Connection, user_id: int, todo_id: int) -> sqlite
     ).fetchone()
 
 
+def _get_owned_todo_any(db: sqlite3.Connection, user_id: int, todo_id: int) -> sqlite3.Row | None:
+    """Fetch an owned todo regardless of deleted state (restore targets soft-deleted rows)."""
+    return db.execute(
+        "SELECT * FROM todos WHERE id = ? AND user_id = ?",
+        (todo_id, user_id),
+    ).fetchone()
+
+
 def update_todo(
     db: sqlite3.Connection,
     user_id: int,
     todo_id: int,
     values: dict[str, object],
 ) -> TodoPublic | None:
-    row = get_owned_todo(db, user_id, todo_id)
+    row = _get_owned_todo_any(db, user_id, todo_id)
     if row is None:
         return None
     if not values:
         return row_to_todo(row)
 
-    allowed = {"content", "due_date", "due_time", "status", "pinned"}
+    allowed = {"content", "due_date", "due_time", "status", "pinned", "deleted_at"}
     assignments = []
     params = []
     for key, value in values.items():
@@ -113,12 +121,12 @@ def update_todo(
         f"""
         UPDATE todos
         SET {", ".join(assignments)}
-        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ?
         """,
         params,
     )
     db.commit()
-    return row_to_todo(get_owned_todo(db, user_id, todo_id))
+    return row_to_todo(_get_owned_todo_any(db, user_id, todo_id))
 
 
 def soft_delete_todo(db: sqlite3.Connection, user_id: int, todo_id: int) -> bool:

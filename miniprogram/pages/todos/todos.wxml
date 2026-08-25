@@ -5,7 +5,15 @@
       <view>
         <text class="wordmark">mustdo</text>
       </view>
-      <button class="visibility-button" bindtap="toggleShowCompleted">{{showCompleted ? '隐藏已完成' : '显示已完成'}}</button>
+      <view class="header-actions">
+        <button class="trash-button" bindtap="openTrash" aria-label="垃圾桶">
+          <view class="trash-icon">
+            <view class="trash-lid"></view>
+            <view class="trash-bin"></view>
+          </view>
+        </button>
+        <button class="visibility-button" bindtap="toggleShowCompleted">{{showCompleted ? '隐藏已完成' : '显示已完成'}}</button>
+      </view>
     </view>
   </view>
 

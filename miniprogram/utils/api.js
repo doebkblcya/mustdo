@@ -140,6 +140,11 @@ function deleteTodo(id) {
   return request("/api/todos/" + id, { method: "DELETE" });
 }
 
+// 垃圾桶列表：type = 'deleted' | 'overdue'，缺省返回计数摘要
+function listTrash(type) {
+  return request("/api/trash" + (type ? "?type=" + type : ""));
+}
+
 function createTodosFromTranscript(transcript, source) {
   return request("/api/todos/ai", {
     method: "POST",
@@ -310,6 +315,7 @@ module.exports = {
   listTodos: listTodos,
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,
+  listTrash: listTrash,
   createTodosFromTranscript: createTodosFromTranscript,
   organizeTodos: organizeTodos,
   uploadVoice: uploadVoice,

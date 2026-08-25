@@ -98,6 +98,9 @@ def patch_todo(
         values["status"] = payload.status
     if "pinned" in fields:
         values["pinned"] = payload.pinned
+    if "deleted_at" in fields:
+        # 恢复：deleted_at=None 清除删除标记（日期归正由客户端决定，见 v2-04）
+        values["deleted_at"] = payload.deleted_at
 
     updated = update_todo(db, int(user["id"]), todo_id, values)
     if updated is None:
