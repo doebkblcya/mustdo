@@ -68,11 +68,10 @@ Page({
     organizeGroups: [],  // [{name, todo_ids}] 缓存结构
     todayHasPending: false, // 今天是否有未完成项（决定入口显示）
 
-    // Voice
-    voicePhase: "idle",
+    // Voice recording + unified processing panel
+    recording: false,
+    panelActive: false,
     voiceCancelHover: false,
-    voiceMessage: "",
-    transcript: "",
 
     // Composer bar (keyboard ⇄ voice)
     composerMode: "voice", // default: hold-to-talk; toggle switches to text input
@@ -299,6 +298,10 @@ Page({
   openTrash() {
     this._fromTrash = true;
     wx.navigateTo({ url: "/pages/trash/trash" });
+  },
+
+  openSettings() {
+    wx.navigateTo({ url: "/pages/settings/settings" });
   },
 
   // ========== AI 动态整理（今天视图） ==========
@@ -1234,7 +1237,7 @@ Page({
   // ========== Composer bar (keyboard ⇄ voice) ==========
 
   onComposerToggle() {
-    if (this.data.voicePhase === "recording") return;
+    if (this.data.recording || this.data.panelActive) return;
     if (this.data.composerSubmitting) return;
     const next = this.data.composerMode === "keyboard" ? "voice" : "keyboard";
     if (next === "voice") {
@@ -1253,11 +1256,11 @@ Page({
   onComposerTouchStart(event) {
     // Fallback stop: a recording may have started while the permission
     // dialog stole touchend — the next touch on the bar stops it.
-    if (this.data.voicePhase === "recording") {
+    if (this.data.recording) {
       this.stopVoice();
       return;
     }
-    if (this.data.voicePhase !== "idle") return;
+    if (this.data.panelActive) return;
 
     const touch = event.touches && event.touches[0];
     if (touch) this._voiceTouchStartY = touch.clientY;
@@ -1269,13 +1272,13 @@ Page({
   },
 
   onComposerTouchMove(event) {
-    if (this.data.voicePhase === "recording") {
+    if (this.data.recording) {
       this.onVoiceButtonMove(event);
     }
   },
 
   onComposerTouchEnd() {
-    if (this.data.voicePhase === "recording") {
+    if (this.data.recording) {
       this.stopVoice();
     }
   },
@@ -1341,7 +1344,7 @@ Page({
         if (
           this.data.composerMode === "keyboard"
           && !this.data.composerSubmitting
-          && this.data.voicePhase === "idle"
+          && !this.data.panelActive
         ) {
           this.setData({ composerFocus: true });
         }
@@ -1366,39 +1369,22 @@ Page({
     }
     wx.hideKeyboard();
 
-    // Clear the bar — the full-screen result overlay takes over
+    // Clear the bar — the unified processing panel takes over.
     this.setData({
       composerSubmitting: true,
       composerText: "",
       composerCursor: -1,
       composerFocus: false,
-      voicePhase: "parsing",
-      voiceMessage: "正在解析待办…",
-      transcript: content,
       expanded: false,
       expandVisible: false,
       composerOverflow: false,
       composerTall: false,
     });
 
-    try {
-      const result = await api.createTodosFromTranscript(content, "text");
-      if (!result.items || result.items.length === 0) {
-        this.failVoice(result.message || "未添加待办");
-        return;
-      }
-      wx.vibrateShort({ type: "light" });
-      this.setData({
-        voicePhase: "done",
-        voiceMessage: `已添加 ${result.items.length} 项`,
-      });
-      await this.loadTodos();
-      setTimeout(() => this._measureTabs(), 200);
-      this._dismissVoiceResult();
-    } catch (error) {
-      this.failVoice(error.message || "解析失败");
-    } finally {
+    const panel = this.selectComponent("#processingPanel");
+    if (!panel || !panel.startText(content)) {
       this.setData({ composerSubmitting: false });
+      wx.showToast({ title: "当前任务处理中", icon: "none" });
     }
   },
 
@@ -1415,42 +1401,36 @@ Page({
     this.recorder.onStop((res) => {
       this.recorderStarted = false;
 
-      // 取消录音或已离开录音态，不上传
-      if (this.data.voicePhase !== "parsing") return;
+      // A max-duration auto-stop arrives while `recording` is still true.
+      // Cancelled recordings clear both flags before onStop arrives.
+      const shouldProcess = this._voiceShouldProcess || this.data.recording;
+      this.setData({ recording: false, voiceCancelHover: false });
+      if (!shouldProcess) return;
+      this._voiceShouldProcess = false;
 
       const tempFilePath = res.tempFilePath;
       if (!tempFilePath) {
-        this.failVoice("录音文件获取失败");
+        this.setData({ panelActive: false });
+        wx.showToast({ title: "录音文件获取失败", icon: "none" });
         return;
       }
-
-      api.uploadVoice(tempFilePath)
-        .then((result) => {
-          const transcript = (result && result.transcript) || "";
-          if (!transcript) {
-            this.failVoice("语音未识别出有效文本");
-            return;
-          }
-          wx.vibrateShort({ type: "light" });
-          this.setData({
-            voiceMessage: "正在解析待办…",
-            transcript,
-          });
-          return this.createTodosFromVoice(transcript);
-        })
-        .catch((err) => {
-          this.failVoice(err.message || "语音识别失败");
-        });
+      const panel = this.selectComponent("#processingPanel");
+      if (!panel || !panel.startVoice(tempFilePath)) {
+        this.setData({ panelActive: false });
+        wx.showToast({ title: "当前任务处理中", icon: "none" });
+      }
     });
 
     this.recorder.onError((error) => {
       this.recorderStarted = false;
-      this.failVoice(error.errMsg || "录音失败");
+      this._voiceShouldProcess = false;
+      this.setData({ recording: false, panelActive: false });
+      wx.showToast({ title: error.errMsg || "录音失败", icon: "none" });
     });
   },
 
   async startVoice() {
-    if (this.data.voicePhase !== "idle") return;
+    if (this.data.recording || this.data.panelActive) return;
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
@@ -1462,7 +1442,7 @@ Page({
       await this.ensureRecordPermission();
     } catch (_error) {
       this._voicePermissionPending = false;
-      this.failVoice("请先授权麦克风");
+      wx.showToast({ title: "请先授权麦克风", icon: "none" });
       return;
     }
     // stopVoice may have fired during await — abort if cancelled
@@ -1471,10 +1451,8 @@ Page({
 
     // ── Visual feedback ──
     this.setData({
-      voicePhase: "recording",
+      recording: true,
       voiceCancelHover: false,
-      voiceMessage: "",
-      transcript: "",
     });
     wx.vibrateShort({ type: "heavy" });
 
@@ -1488,12 +1466,13 @@ Page({
         frameSize: 4,
       });
     } catch (error) {
-      this.failVoice(error.errMsg || error.message || "录音启动失败");
+      this.setData({ recording: false });
+      wx.showToast({ title: error.errMsg || error.message || "录音启动失败", icon: "none" });
     }
   },
 
   onVoiceButtonMove(event) {
-    if (this.data.voicePhase !== "recording") return;
+    if (!this.data.recording) return;
     const touch = event.touches[0];
     if (!touch) return;
     const dy = this._voiceTouchStartY - touch.clientY;
@@ -1509,29 +1488,29 @@ Page({
     // Permission check still pending — cancel it, startVoice will abort
     if (this._voicePermissionPending) {
       this._voicePermissionPending = false;
-      this.setData({ voicePhase: "idle", voiceCancelHover: false });
+      this.setData({ recording: false, voiceCancelHover: false });
       return;
     }
 
-    if (this.data.voicePhase !== "recording") return;
+    if (!this.data.recording) return;
 
     const cancelled = this.data.voiceCancelHover;
 
-    // Stop recorder
+    // Set the hand-off flag before stop(): onStop timing differs by platform.
+    this._voiceShouldProcess = !cancelled;
     this.stopRecorder();
 
     if (cancelled) {
       // Cancel — discard everything
-      this.setData({ voicePhase: "idle", voiceCancelHover: false });
+      this.setData({ recording: false, voiceCancelHover: false });
       return;
     }
 
-    // Normal release — show parsing state, onStop will handle upload
+    // Normal release — onStop hands the temp file to the processing panel.
     this.setData({
-      voicePhase: "parsing",
+      recording: false,
+      panelActive: true,
       voiceCancelHover: false,
-      voiceMessage: "正在识别语音…",
-      transcript: "",
     });
   },
 
@@ -1551,7 +1530,6 @@ Page({
   },
 
   stopRecorder() {
-    if (!this.recorderStarted) return;
     try {
       this.recorder.stop();
     } catch (error) {
@@ -1559,47 +1537,21 @@ Page({
     }
   },
 
-  async createTodosFromVoice(transcript) {
-    if (!transcript) {
-      this.failVoice("语音未识别出有效文本");
-      return;
-    }
-    try {
-      const result = await api.createTodosFromTranscript(transcript);
-      if (!result.items || result.items.length === 0) {
-        this.setData({
-          voicePhase: "done",
-          voiceMessage: result.message || "未添加待办",
-        });
-        this._dismissVoiceResult();
-        return;
-      }
-      this.setData({
-        voicePhase: "done",
-        voiceMessage: `已添加 ${result.items.length} 项`,
-      });
-      await this.loadTodos();
-      setTimeout(() => this._measureTabs(), 200);
-      this._dismissVoiceResult();
-    } catch (error) {
-      this.failVoice(error.message || "解析失败");
-    }
+  onPanelStateChange(event) {
+    const active = !!event.detail.active;
+    const patch = { panelActive: active };
+    if (!active) patch.composerSubmitting = false;
+    this.setData(patch);
   },
 
-  _dismissVoiceResult() {
-    setTimeout(() => {
-      if (this.data.voicePhase === "done" || this.data.voicePhase === "error") {
-        this.setData({ voicePhase: "idle", voiceMessage: "", transcript: "" });
-      }
-    }, 2000);
+  async onPanelSaved() {
+    await this.loadTodos();
+    setTimeout(() => this._measureTabs(), 200);
   },
 
-  failVoice(message) {
-    this.setData({
-      voicePhase: "error",
-      voiceMessage: message,
-    });
-    this._dismissVoiceResult();
+  onPanelRerecord() {
+    this.setData({ composerMode: "voice", panelActive: false });
+    wx.showToast({ title: "请按住说话", icon: "none" });
   },
 
   // ========== Cleanup ==========

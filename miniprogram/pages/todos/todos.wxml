@@ -6,6 +6,9 @@
         <text class="wordmark">mustdo</text>
       </view>
       <view class="header-actions">
+        <button class="settings-button" bindtap="openSettings" aria-label="设置">
+          <text class="settings-icon">设置</text>
+        </button>
         <button class="trash-button" bindtap="openTrash" aria-label="垃圾桶">
           <view class="trash-icon">
             <view class="trash-lid"></view>
@@ -160,15 +163,13 @@
   </view>
   </view>
 
-  <!-- Parsing / Result overlay -->
-  <view wx:if="{{voicePhase === 'parsing' || voicePhase === 'done' || voicePhase === 'error'}}" class="voice-result-overlay">
-    <view class="result-card {{voicePhase}}">
-      <view wx:if="{{voicePhase === 'parsing'}}" class="result-spinner"></view>
-      <view wx:else class="result-icon">{{voicePhase === 'done' ? '✓' : '✕'}}</view>
-      <text class="result-message">{{voiceMessage}}</text>
-      <text wx:if="{{transcript && voicePhase === 'done'}}" class="result-transcript">{{transcript}}</text>
-    </view>
-  </view>
+  <processing-panel
+    id="processingPanel"
+    today-date="{{todayDate}}"
+    bind:statechange="onPanelStateChange"
+    bind:saved="onPanelSaved"
+    bind:rerecord="onPanelRerecord"
+  />
 
   <!-- Composer: one state model, separate compact/expanded geometry. -->
   <view
@@ -176,7 +177,7 @@
     style="{{expanded ? ('bottom: ' + composerKeyboardHeight + 'px;') : ''}}"
   >
     <view
-      class="composer-surface {{expanded ? 'composer-surface--expanded' : ''}} {{voicePhase === 'recording' ? 'composer-surface--recording' : ''}}"
+      class="composer-surface {{expanded ? 'composer-surface--expanded' : ''}} {{recording ? 'composer-surface--recording' : ''}}"
       style="{{expanded ? ('top: ' + expandTop + 'px; bottom: 0;') : ('transform: translateY(' + composerLift + 'px);')}}"
     >
       <view
@@ -236,7 +237,7 @@
         bindtouchend="onComposerTouchEnd"
         bindtouchcancel="onComposerTouchCancel"
       >
-        <text class="composer-hold-text">{{voicePhase === 'recording' ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
+        <text class="composer-hold-text">{{recording ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
       </view>
 
       <!-- Small outlined capsule; expanded mode repositions it over the editor. -->
@@ -249,7 +250,7 @@
           <view class="send-icon"></view>
         </view>
         <view
-          class="composer-action composer-action--toggle {{voicePhase === 'recording' ? 'composer-action--disabled' : ''}}"
+          class="composer-action composer-action--toggle {{recording ? 'composer-action--disabled' : ''}}"
           bindtap="onComposerToggle"
         >
           <view wx:if="{{composerMode === 'keyboard'}}" class="wave-icon">

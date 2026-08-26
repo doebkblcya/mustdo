@@ -1,23 +1,40 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, status
 
 from app.deps import current_user_invited, get_db
 from app.errors import raise_api_error
 from app.schemas import (
+    BatchCreateRequest,
+    BatchCreateResponse,
     OrganizeRequest,
     OrganizeResponse,
+    ParsedItemOut,
     TodoListResponse,
+    TodoParseRequest,
+    TodoParseResponse,
     TodoPublic,
     TodoUpdateRequest,
 )
-from app.services.deepseek import DeepSeekParseError, organize_todos_with_deepseek
-from app.services.todos import list_grouped_todos, soft_delete_todo, update_todo
+from app.services.deepseek import (
+    DeepSeekParseError,
+    NoTodoParsedError,
+    organize_todos_with_deepseek,
+    parse_todos_with_deepseek,
+)
+from app.services.todos import create_todos, list_grouped_todos, soft_delete_todo, update_todo
 
 
 router = APIRouter(prefix="/api/todos", tags=["todos"])
+logger = logging.getLogger("uvicorn.error")
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return round((perf_counter() - started_at) * 1000)
 
 
 @router.get("", response_model=TodoListResponse)
@@ -26,6 +43,96 @@ def list_todos(
     user: sqlite3.Row = Depends(current_user_invited),
 ):
     return list_grouped_todos(db, int(user["id"]))
+
+
+@router.post("/parse", response_model=TodoParseResponse)
+async def parse_todos(
+    payload: TodoParseRequest,
+    user: sqlite3.Row = Depends(current_user_invited),
+):
+    _ = user
+    started_at = perf_counter()
+    try:
+        items = await parse_todos_with_deepseek(payload.transcript)
+    except NoTodoParsedError as exc:
+        logger.info(
+            "todos_parse_done elapsed_ms=%s transcript_chars=%s source=%s items=0",
+            _elapsed_ms(started_at),
+            len(payload.transcript),
+            payload.source,
+        )
+        return TodoParseResponse(
+            transcript=payload.transcript,
+            items=[],
+            message=str(exc),
+        )
+    except DeepSeekParseError as exc:
+        logger.warning(
+            "todos_parse_failed elapsed_ms=%s transcript_chars=%s source=%s error=%s detail=%s",
+            _elapsed_ms(started_at),
+            len(payload.transcript),
+            payload.source,
+            exc,
+            exc.detail,
+        )
+        raise_api_error(
+            status.HTTP_502_BAD_GATEWAY,
+            "todo_parse_unavailable",
+            "解析服务暂时不可用，请稍后重试",
+        )
+
+    logger.info(
+        "todos_parse_done elapsed_ms=%s transcript_chars=%s source=%s items=%s",
+        _elapsed_ms(started_at),
+        len(payload.transcript),
+        payload.source,
+        len(items),
+    )
+    return TodoParseResponse(
+        transcript=payload.transcript,
+        items=[ParsedItemOut.model_validate(item) for item in items],
+    )
+
+
+@router.post(
+    "/batch",
+    response_model=BatchCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def batch_create_todos(
+    payload: BatchCreateRequest,
+    db: sqlite3.Connection = Depends(get_db),
+    user: sqlite3.Row = Depends(current_user_invited),
+):
+    started_at = perf_counter()
+    items = [
+        {
+            "content": item.content,
+            "due_date": item.due_date.isoformat(),
+            "due_time": item.due_time,
+        }
+        for item in payload.items
+    ]
+    try:
+        created = create_todos(db, int(user["id"]), items)
+    except sqlite3.Error:
+        logger.exception(
+            "todos_batch_failed elapsed_ms=%s items=%s",
+            _elapsed_ms(started_at),
+            len(items),
+        )
+        raise_api_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "todo_save_failed",
+            "保存待办失败，请稍后重试",
+        )
+
+    logger.info(
+        "todos_batch_done elapsed_ms=%s items=%s",
+        _elapsed_ms(started_at),
+        len(created),
+    )
+    return BatchCreateResponse(items=created)
 
 
 @router.post("/organize", response_model=OrganizeResponse)

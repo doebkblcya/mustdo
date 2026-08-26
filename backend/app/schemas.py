@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.time_utils import today_date
+
 
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -103,9 +105,8 @@ class TranscriptionResponse(BaseModel):
     transcript: str
 
 
-class AiCreateRequest(BaseModel):
+class TodoParseRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=4000)
-    # 输入来源：voice=语音转写（默认，兼容旧客户端），text=键盘输入
     source: Literal["voice", "text"] = "voice"
 
     @field_validator("transcript")
@@ -117,10 +118,52 @@ class AiCreateRequest(BaseModel):
         return cleaned
 
 
-class AiCreateResponse(BaseModel):
+class ParsedItemOut(BaseModel):
+    content: str
+    due_date: date
+    due_time: str | None
+
+
+class TodoParseResponse(BaseModel):
     transcript: str
-    items: list[TodoPublic]
+    items: list[ParsedItemOut]
     message: str | None = None
+
+
+class BatchCreateItem(BaseModel):
+    content: str = Field(min_length=1, max_length=200)
+    due_date: date
+    due_time: str | None = None
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("content is required")
+        return cleaned
+
+    @field_validator("due_date")
+    @classmethod
+    def normalize_due_date(cls, value: date) -> date:
+        return max(value, today_date())
+
+    @field_validator("due_time")
+    @classmethod
+    def validate_due_time(cls, value: str | None) -> str | None:
+        if value in {"", None}:
+            return None
+        if not TIME_RE.fullmatch(value):
+            raise ValueError("due_time must be HH:MM")
+        return value
+
+
+class BatchCreateRequest(BaseModel):
+    items: list[BatchCreateItem] = Field(min_length=1, max_length=20)
+
+
+class BatchCreateResponse(BaseModel):
+    items: list[TodoPublic]
 
 
 class OrganizeItem(BaseModel):

@@ -2,6 +2,7 @@
   "pages": [
     "pages/auth/auth",
     "pages/todos/todos",
+    "pages/settings/settings",
     "pages/trash/trash"
   ],
   "window": {

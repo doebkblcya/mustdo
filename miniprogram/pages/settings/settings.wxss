@@ -1,0 +1,98 @@
+page {
+  min-height: 100%;
+  background: #f2f2f7;
+}
+
+.settings-page {
+  padding: 42rpx 30rpx;
+}
+
+.settings-header {
+  padding: 0 8rpx 28rpx;
+}
+
+.settings-title,
+.settings-subtitle,
+.mode-title,
+.mode-desc,
+.settings-note {
+  display: block;
+}
+
+.settings-title {
+  color: #1d1d1f;
+  font-size: 42rpx;
+  font-weight: 700;
+}
+
+.settings-subtitle {
+  margin-top: 8rpx;
+  color: #8e8e93;
+  font-size: 25rpx;
+}
+
+.mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.mode-card {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 30rpx;
+  border: 3rpx solid transparent;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 5rpx 22rpx rgba(0, 0, 0, 0.05);
+}
+
+.mode-card--selected {
+  border-color: #1d1d1f;
+}
+
+.mode-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.mode-title {
+  color: #1d1d1f;
+  font-size: 30rpx;
+  font-weight: 650;
+}
+
+.mode-desc {
+  margin-top: 9rpx;
+  color: #6e6e73;
+  font-size: 24rpx;
+  line-height: 35rpx;
+}
+
+.mode-radio {
+  display: flex;
+  flex: 0 0 44rpx;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  border: 2rpx solid #c7c7cc;
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.mode-card--selected .mode-radio {
+  border-color: #1d1d1f;
+  background: #1d1d1f;
+}
+
+.settings-note {
+  padding: 24rpx 8rpx;
+  color: #8e8e93;
+  font-size: 23rpx;
+  line-height: 34rpx;
+}

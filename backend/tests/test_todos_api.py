@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 
@@ -16,8 +17,17 @@ from fastapi import HTTPException  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_connection, init_db  # noqa: E402
-from app.routers.todos import delete_todo, organize_todos  # noqa: E402
-from app.schemas import OrganizeRequest  # noqa: E402
+from app.routers.todos import (  # noqa: E402
+    batch_create_todos,
+    delete_todo,
+    organize_todos,
+    parse_todos,
+)
+from app.schemas import (  # noqa: E402
+    BatchCreateRequest,
+    OrganizeRequest,
+    TodoParseRequest,
+)
 from app.time_utils import now_shanghai, today_date  # noqa: E402
 
 
@@ -134,6 +144,66 @@ class TodoApiTests(unittest.TestCase):
         self.assertEqual(len(result.groups), 1)
         self.assertEqual(result.groups[0].name, "工作")
         self.assertEqual(result.groups[0].todo_ids, [todo_id])
+
+    def test_parse_returns_items_without_writing_todos(self) -> None:
+        user_id, _todo_id = self._create_todo()
+        db = get_connection()
+        before = db.execute("SELECT COUNT(*) AS count FROM todos").fetchone()["count"]
+        fake_items = [
+            {
+                "content": "买菜",
+                "due_date": today_date().isoformat(),
+                "due_time": "15:00",
+            }
+        ]
+        with patch(
+            "app.routers.todos.parse_todos_with_deepseek",
+            new=AsyncMock(return_value=fake_items),
+        ):
+            result = asyncio.run(
+                parse_todos(
+                    TodoParseRequest(transcript="今天下午三点买菜", source="text"),
+                    user={"id": user_id},
+                )
+            )
+        after = db.execute("SELECT COUNT(*) AS count FROM todos").fetchone()["count"]
+        db.close()
+
+        self.assertEqual(before, after)
+        self.assertEqual(result.transcript, "今天下午三点买菜")
+        self.assertEqual(result.items[0].content, "买菜")
+        self.assertEqual(result.items[0].due_time, "15:00")
+
+    def test_batch_creates_all_items_and_returns_public_todos(self) -> None:
+        user_id, _todo_id = self._create_todo()
+        db = get_connection()
+        try:
+            result = batch_create_todos(
+                BatchCreateRequest(
+                    items=[
+                        {
+                            "content": "  买   菜  ",
+                            "due_date": today_date() - timedelta(days=3),
+                            "due_time": "",
+                        },
+                        {
+                            "content": "交房租",
+                            "due_date": today_date() + timedelta(days=2),
+                            "due_time": "09:30",
+                        },
+                    ]
+                ),
+                db=db,
+                user={"id": user_id},
+            )
+        finally:
+            db.close()
+
+        self.assertEqual(len(result.items), 2)
+        self.assertEqual(result.items[0].content, "买 菜")
+        self.assertEqual(result.items[0].due_date, today_date())
+        self.assertIsNone(result.items[0].due_time)
+        self.assertEqual(result.items[1].due_time, "09:30")
 
 
 if __name__ == "__main__":

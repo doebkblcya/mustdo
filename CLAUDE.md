@@ -9,7 +9,7 @@
 
 ## 产品定位
 
-Mustdo — 轻量语音待办工具。语音/文字只做"新增待办"（文字输入走同一 AI 解析链路，`source=text`），修改/删除/完成/置顶全部手动操作。核心原则：主流程短（语音按→说→松→入库；文字输入→回车→入库）、不做危险操作、AI 结果不做确认弹窗。
+Mustdo — 轻量语音待办工具。语音/文字只做"新增待办"（文字输入走同一 AI 解析链路，`source=text`），修改/删除/完成/置顶全部手动操作。默认自动添加以保持主流程短；用户也可开启添加前确认，审核并编辑解析结果后再保存。
 
 ## 项目结构
 
@@ -83,13 +83,14 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 | PATCH | `/api/todos/{id}` | 编辑（content/due_date/due_time/status/pinned） |
 | DELETE | `/api/todos/{id}` | 软删除 |
 | POST | `/api/voice/transcriptions` | 音频→火山 ASR→文本 |
-| POST | `/api/todos/ai` | 文本→DeepSeek→新增待办（`source`: `voice` 默认/`text`） |
+| POST | `/api/todos/parse` | 文本→DeepSeek→结构化待办（不写库） |
+| POST | `/api/todos/batch` | 按显式条目批量新增待办 |
 
 ### 错误格式
 `{"code": "machine_code", "message": "中文提示", "details": null}`。code 稳定、message 可展示。校验错误统一 `validation_error`（422）。
 
 ### 语音/AI 数据流
-小程序录音（16kHz/mono/PCM，上限 60s，下限 `MIN_AUDIO_SECONDS`，太短返回 `recording_too_short`）→ `wx.uploadFile` → 后端 PCM→WAV→base64→火山引擎极速版 HTTP POST → transcript → DeepSeek JSON Output → 校验入库。文字输入跳过 ASR，直接 POST `/api/todos/ai`（`source=text`），其余链路相同。失败不写数据库。静音音频（火山 20000003）返回 200 + 空 transcript，不报错。非 PCM 格式上传走 ffmpeg 转码（`services/audio.py`，系统 ffmpeg 优先、缺失时用 imageio-ffmpeg 内置二进制，两者都没有才返回 415）。
+小程序录音（16kHz/mono/PCM，上限 60s，下限 `MIN_AUDIO_SECONDS`，太短返回 `recording_too_short`）→ `wx.uploadFile` → 后端 PCM→WAV→base64→火山引擎极速版 HTTP POST → transcript → `/api/todos/parse` → `/api/todos/batch`。文字输入跳过 ASR，直接进入同一 parse/batch 管道。失败不写数据库。静音音频（火山 20000003）返回 200 + 空 transcript，不报错。非 PCM 格式上传走 ffmpeg 转码（`services/audio.py`，系统 ffmpeg 优先、缺失时用 imageio-ffmpeg 内置二进制，两者都没有才返回 415）。
 
 ### 火山 ASR
 端点 `POST .../api/v3/auc/bigmodel/recognize/flash`，资源 `volc.bigasr.auc_turbo`，同步接口。认证优先新版 `X-Api-Key`（`VOLC_API_KEY`），缺失时回退旧版 `X-Api-App-Key` + `X-Api-Access-Key`。

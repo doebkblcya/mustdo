@@ -40,12 +40,13 @@ Token 存在小程序本地 storage 中，后端通过 `sessions` 表校验。
 | 完成/编辑 | `PATCH /api/todos/{id}` |
 | 删除 | `DELETE /api/todos/{id}` |
 | 语音转写 | `POST /api/voice/transcriptions`（`wx.uploadFile` 上传 PCM 文件） |
-| AI 解析 | `POST /api/todos/ai` |
+| AI 解析 | `POST /api/todos/parse` |
+| 批量保存 | `POST /api/todos/batch` |
 
 ## 语音流程
 
 ```
-按住 → 本地录音（16kHz/mono/PCM）→ 松手 → wx.uploadFile → 后端转写 → AI 解析 → 入库
+按住 → 本地录音（16kHz/mono/PCM）→ 松手 → wx.uploadFile → 后端转写 → AI 解析 → 确认（可选）→ 批量入库
 ```
 
 不再使用 WebSocket 流式发送。录音参数见 `pages/todos/todos.js` 中 `recorder.start`。

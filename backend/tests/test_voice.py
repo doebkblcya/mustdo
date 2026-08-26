@@ -20,14 +20,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from fastapi import HTTPException  # noqa: E402
-from starlette.responses import Response  # noqa: E402
-
 from app.config import get_settings  # noqa: E402
-from app.routers.voice import create_todos_from_transcript  # noqa: E402
-from app.schemas import AiCreateRequest  # noqa: E402
 from app.services.asr import VolcAsrError, pcm_to_wav, recognize_pcm  # noqa: E402
 from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm  # noqa: E402
-from app.services.deepseek import NoTodoParsedError  # noqa: E402
 
 
 def _pcm_silence(seconds: float) -> bytes:
@@ -238,50 +233,6 @@ class AudioUploadTests(unittest.TestCase):
         result = asyncio.run(read_upload_as_pcm(upload))
         duration = len(result) / PCM_BYTES_PER_SECOND
         self.assertAlmostEqual(duration, 2.0, delta=0.2)
-
-
-# ---------------------------------------------------------------------------
-# AI todo route tests
-# ---------------------------------------------------------------------------
-
-
-class AiCreateRequestSchemaTests(unittest.TestCase):
-    def test_source_defaults_to_voice(self) -> None:
-        req = AiCreateRequest(transcript="明天买菜")
-        self.assertEqual(req.source, "voice")
-
-    def test_source_accepts_text(self) -> None:
-        req = AiCreateRequest(transcript="明天买菜", source="text")
-        self.assertEqual(req.source, "text")
-
-    def test_source_rejects_unknown_value(self) -> None:
-        from pydantic import ValidationError
-
-        with self.assertRaises(ValidationError):
-            AiCreateRequest(transcript="明天买菜", source="keyboard")
-
-
-class AiTodoRouteTests(unittest.TestCase):
-    def test_no_todo_parse_result_returns_empty_success_response(self) -> None:
-        async def no_todo(_transcript):
-            raise NoTodoParsedError("没有识别到需要新增的待办")
-
-        async def run_route():
-            response = Response()
-            with patch("app.routers.voice.parse_todos_with_deepseek", no_todo):
-                result = await create_todos_from_transcript(
-                    AiCreateRequest(transcript="今天天气不错"),
-                    response=response,
-                    db=SimpleNamespace(),
-                    user={"id": 1},
-                )
-            return response, result
-
-        response, result = asyncio.run(run_route())
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(result.items, [])
-        self.assertEqual(result.message, "没有识别到需要新增的待办")
 
 
 if __name__ == "__main__":

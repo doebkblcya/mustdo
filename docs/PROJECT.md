@@ -8,9 +8,9 @@ Mustdo 是一个轻量语音待办工具。第一版只让语音承担“新增�
 
 核心原则：
 
-- 主流程要短：按住说话 / 键盘输入，松手或回车后自动转写、解析、入库。
+- 主流程要短：默认自动添加，松手或回车后自动转写、解析、入库。
 - 语音不做危险操作：不通过 AI 修改或删除已有事项。
-- AI 结果不做确认弹窗：解析过程可见，失败不写入数据。
+- 确认按需开启：用户可切换到添加前确认，审核并编辑解析结果后再保存。
 - 多端优先：微信小程序是第一客户端，后续 iOS 复用同一套后端 API。
 
 ## 当前架构
@@ -124,14 +124,14 @@ backend/
 2. 松手后，wx.uploadFile POST /api/voice/transcriptions 上传完整音频文件。
 3. 后端 PCM → WAV header → base64 → POST 火山引擎极速版。
 4. 火山引擎返回识别文本 transcript。
-5. POST /api/todos/ai 发送 transcript。
-6. 后端调用 DeepSeek，要求 JSON Output。
-7. 后端校验 content、due_date、due_time。
-8. 校验成功后写入 SQLite。
+5. POST /api/todos/parse 发送 transcript。
+6. 后端调用 DeepSeek，返回校验后的结构化条目，不写库。
+7. 前端 POST /api/todos/batch 保存最终条目。
+8. 后端以事务写入 SQLite。
 9. 前端刷新待办并展示已添加结果。
 ```
 
-文字输入走同一链路：小程序键盘输入 → 直接 `POST /api/todos/ai`（`source=text`）→ DeepSeek 解析 → 入库。语音路径先经 ASR 得到 transcript 再调用 `/api/todos/ai`（`source=voice`，默认值，兼容旧客户端）。
+文字输入走同一链路：小程序键盘输入 → `POST /api/todos/parse`（`source=text`）→ `POST /api/todos/batch`。语音路径先经 ASR 得到 transcript，再进入同一 parse/batch 管道。
 
 失败策略：
 
@@ -169,7 +169,8 @@ ASR 协议：
 - `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态、置顶
 - `DELETE /api/todos/{id}`：软删除待办
 - `POST /api/voice/transcriptions`：上传音频文件并返回转写文本
-- `POST /api/todos/ai`：将文本解析并新增待办（`source`：`voice` 默认 / `text` 键盘输入）
+- `POST /api/todos/parse`：将文本解析为结构化待办，不写库
+- `POST /api/todos/batch`：按前端提交的最终条目批量新增待办
 
 ### 错误模型
 
@@ -223,7 +224,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 
 语音链路：小程序用 `wx.getRecorderManager` 采集 `16kHz/mono/PCM` 音频（上限 60s，配置在 `config.js`），松手后通过 `wx.uploadFile` 一次性上传到 `POST /api/voice/transcriptions`。后端将 PCM 封装 WAV header 后调用火山引擎极速版 ASR，返回转写文本。
 
-输入链路：底部单条通栏默认「按住说话」，按住录音、松手发送、上滑取消（录音中文字变红提示「松开完成，上移取消」）；点右侧键盘图标切换到文字模式（自动聚焦弹键盘），输入文本后回车/点发送，直接 `POST /api/todos/ai`（`source=text`），解析、入库、反馈与语音完全一致。切换钮始终在最右，录制语音时切换钮置灰禁用；iOS 用键盘右下角发送键，其余平台输入框右侧显示发送箭头。
+输入链路：底部单条通栏默认「按住说话」，按住录音、松手发送、上滑取消（录音中文字变红提示「松开完成，上移取消」）；点右侧键盘图标切换到文字模式（自动聚焦弹键盘），输入文本后回车/点发送，进入统一的 `/api/todos/parse` → `/api/todos/batch` 管道。切换钮始终在最右，录制语音时切换钮置灰禁用；iOS 用键盘右下角发送键，其余平台输入框右侧显示发送箭头。
 
 ### 滑动交互
 

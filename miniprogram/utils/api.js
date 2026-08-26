@@ -145,10 +145,17 @@ function listTrash(type) {
   return request("/api/trash" + (type ? "?type=" + type : ""));
 }
 
-function createTodosFromTranscript(transcript, source) {
-  return request("/api/todos/ai", {
+function parseTodos(transcript, source) {
+  return request("/api/todos/parse", {
     method: "POST",
     data: { transcript: transcript, source: source || "voice" }
+  });
+}
+
+function batchCreateTodos(items) {
+  return request("/api/todos/batch", {
+    method: "POST",
+    data: { items: items }
   });
 }
 
@@ -159,14 +166,15 @@ function organizeTodos(data) {
   });
 }
 
-function uploadVoice(filePath) {
-  return uploadVoiceOnce(filePath, false);
+function uploadVoice(filePath, onUploaded) {
+  return uploadVoiceOnce(filePath, false, onUploaded);
 }
 
-function uploadVoiceOnce(filePath, retried) {
+function uploadVoiceOnce(filePath, retried, onUploaded) {
   var token = getToken();
   return new Promise(function(resolve, reject) {
-    wx.uploadFile({
+    var uploadedNotified = false;
+    var uploadTask = wx.uploadFile({
       url: apiUrl("/api/voice/transcriptions"),
       filePath: filePath,
       name: "file",
@@ -187,7 +195,7 @@ function uploadVoiceOnce(filePath, retried) {
         if (statusCode === 401 && !retried) {
           _relogin()
             .then(function() {
-              resolve(uploadVoiceOnce(filePath, true));
+              resolve(uploadVoiceOnce(filePath, true, onUploaded));
             })
             .catch(reject);
           return;
@@ -202,6 +210,14 @@ function uploadVoiceOnce(filePath, retried) {
         reject(new Error(err.errMsg || "上传失败"));
       },
     });
+    if (uploadTask && uploadTask.onProgressUpdate && onUploaded) {
+      uploadTask.onProgressUpdate(function(progress) {
+        if (!uploadedNotified && progress.progress >= 100) {
+          uploadedNotified = true;
+          onUploaded();
+        }
+      });
+    }
   });
 }
 
@@ -316,7 +332,8 @@ module.exports = {
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,
   listTrash: listTrash,
-  createTodosFromTranscript: createTodosFromTranscript,
+  parseTodos: parseTodos,
+  batchCreateTodos: batchCreateTodos,
   organizeTodos: organizeTodos,
   uploadVoice: uploadVoice,
   request: request,

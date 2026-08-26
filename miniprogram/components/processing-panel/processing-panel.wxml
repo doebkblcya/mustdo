@@ -1,0 +1,121 @@
+<view wx:if="{{visible}}" class="processing-mask" catchtouchmove="noop" bindtap="onPanelTap">
+  <scroll-view class="processing-panel" scroll-y="{{true}}" catchtap="onPanelTap" bindtouchstart="onPanelTap">
+    <view class="panel-header">
+      <view>
+        <text class="panel-eyebrow">{{panel.source === 'voice' ? '语音添加' : '文字添加'}}</text>
+        <text class="panel-title">
+          {{panel.phase === 'reviewing' ? '确认待办' : (panel.phase === 'done' ? '处理完成' : (panel.phase === 'error' ? '处理遇到问题' : '正在处理'))}}
+        </text>
+      </view>
+      <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">×</button>
+    </view>
+
+    <view class="step-list">
+      <view wx:for="{{steps}}" wx:key="key" class="step-row step-row--{{item.state}}">
+        <view class="step-marker">
+          <text wx:if="{{item.state === 'complete'}}">✓</text>
+          <text wx:elif="{{item.state === 'error'}}">!</text>
+          <view wx:elif="{{item.state === 'active'}}" class="step-spinner"></view>
+        </view>
+        <view class="step-copy">
+          <text class="step-label">{{item.label}}</text>
+          <text wx:if="{{item.summary}}" class="step-summary">{{item.summary}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{panel.phase === 'reviewing'}}" class="review-section">
+      <view class="review-block">
+        <view class="review-heading-row">
+          <text class="review-heading">原文</text>
+          <button class="text-action" bindtap="reparse">重新解析</button>
+        </view>
+        <textarea
+          class="transcript-editor"
+          value="{{panel.transcript}}"
+          maxlength="4000"
+          auto-height="{{true}}"
+          bindinput="onTranscriptInput"
+        />
+      </view>
+
+      <view class="review-heading-row review-items-heading">
+        <text class="review-heading">待办</text>
+        <text class="review-count">{{panel.items.length}} 项</text>
+      </view>
+
+      <scroll-view wx:if="{{panel.items.length}}" class="review-list {{panel.items.length > 4 ? 'review-list--scroll' : ''}}" scroll-y="{{panel.items.length > 4}}">
+        <view wx:for="{{panel.items}}" wx:key="_key" class="review-item">
+          <view class="item-main-row">
+            <input
+              class="item-content-input"
+              value="{{item.content}}"
+              maxlength="200"
+              data-index="{{index}}"
+              bindinput="onItemContentInput"
+            />
+            <button class="item-delete" data-index="{{index}}" bindtap="deleteItem">删除</button>
+          </view>
+          <view class="item-meta-row">
+            <picker mode="date" value="{{item.due_date}}" start="{{todayDate}}" data-index="{{index}}" bindchange="onItemDateChange">
+              <view class="meta-pill">{{item.due_date}}</view>
+            </picker>
+            <picker mode="time" value="{{item.due_time || '09:00'}}" data-index="{{index}}" bindchange="onItemTimeChange">
+              <view class="meta-pill">{{item.due_time || '添加时间'}}</view>
+            </picker>
+            <button wx:if="{{item.due_time}}" class="clear-time" data-index="{{index}}" bindtap="clearItemTime">清除</button>
+          </view>
+        </view>
+      </scroll-view>
+      <view wx:else class="review-empty">
+        <text>{{panel.message || '没有识别到需要新增的待办'}}</text>
+        <text class="review-empty-hint">可以修改原文后重新解析</text>
+      </view>
+
+      <button class="primary-action" disabled="{{panel.items.length === 0}}" bindtap="confirmSave">
+        确认添加{{panel.items.length ? ' ' + panel.items.length + ' 项' : ''}}
+      </button>
+    </view>
+
+    <view wx:elif="{{panel.phase === 'done'}}" class="result-section">
+      <view class="result-symbol">✓</view>
+      <text class="result-title">{{panel.created.length ? '已添加 ' + panel.created.length + ' 项' : panel.message}}</text>
+      <scroll-view wx:if="{{panel.created.length}}" class="created-list {{panel.created.length > 4 ? 'created-list--scroll' : ''}}" scroll-y="{{panel.created.length > 4}}">
+        <view wx:for="{{panel.created}}" wx:key="id" class="created-item">
+          <text class="created-content">{{item.content}}</text>
+          <text class="created-meta">{{item.due_date}}{{item.due_time ? ' · ' + item.due_time : ''}}</text>
+        </view>
+      </scroll-view>
+      <button class="secondary-action" bindtap="requestClose">关闭</button>
+    </view>
+
+    <view wx:elif="{{panel.phase === 'error'}}" class="error-section">
+      <view class="error-symbol">!</view>
+      <text class="error-message">{{panel.message}}</text>
+      <view wx:if="{{panel.transcript}}" class="preserved-copy">
+        <text class="preserved-label">已保留原文</text>
+        <text class="preserved-text">{{panel.transcript}}</text>
+      </view>
+      <view wx:if="{{panel.errorStep === 'saving' && panel.items.length}}" class="preserved-copy preserved-items">
+        <text class="preserved-label">待保存条目</text>
+        <text wx:for="{{panel.items}}" wx:key="_key" class="preserved-item">{{item.content}}</text>
+      </view>
+      <view class="error-actions">
+        <button class="primary-action error-primary" bindtap="retry">{{rerecordOnly ? '重新录音' : '重试'}}</button>
+        <button wx:if="{{panel.source === 'voice' && !rerecordOnly}}" class="secondary-action" bindtap="rerecord">重新录音</button>
+      </view>
+    </view>
+
+    <view wx:elif="{{panel.phase === 'parsing' && panel.transcript}}" class="live-detail">
+      <text class="live-label">识别原文</text>
+      <text class="live-transcript">{{panel.transcript}}</text>
+    </view>
+
+    <view wx:elif="{{panel.phase === 'saving' && panel.items.length}}" class="live-detail">
+      <text class="live-label">正在保存 {{panel.items.length}} 项</text>
+      <view class="saving-preview">
+        <text wx:for="{{panel.items}}" wx:key="_key" class="saving-item">{{item.content}}</text>
+      </view>
+    </view>
+  </scroll-view>
+</view>
