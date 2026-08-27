@@ -118,7 +118,8 @@
             <view class="swipe-icon-img swipe-icon--pin"></view>
           </view>
           <view
-            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
+            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}} {{item.id === flashId ? 'todo-item--flash' : ''}}"
+            id="{{'todo-' + item.id}}"
             style="transform: translateX({{item.swipeX || 0}}px);"
             data-index="{{index}}"
             bindtouchstart="onItemTouchStart"
@@ -138,6 +139,7 @@
             <view class="todo-content">
               <text class="todo-title">{{item.content}}</text>
               <text class="todo-meta">{{item.meta}}</text>
+              <text wx:if="{{item.reminder}}" class="todo-reminder">提醒 {{formatRemindAt(item.reminder.remind_at)}}</text>
             </view>
             <button
               wx:if="{{item.status === 'pending' && activeView === 'today'}}"
@@ -146,6 +148,15 @@
               bindtap="moveToTomorrow"
             >
               <view class="tomorrow-icon"></view>
+            </button>
+            <button
+              wx:if="{{item.status === 'pending'}}"
+              class="remind-btn {{item.reminder ? 'remind-btn--on' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="openReminderPanel"
+              aria-label="设置提醒"
+            >
+              <view class="remind-icon"></view>
             </button>
             <button class="edit-btn" data-id="{{item.id}}" bindtap="editTodo">
               <view class="edit-icon">
@@ -303,12 +314,14 @@
       </view>
 
       <view class="sheet-head">
-        <text class="sheet-title">修改待办</text>
+        <text class="sheet-title">{{sheetMode === 'reminder' ? '设置提醒' : '修改待办'}}</text>
         <button class="sheet-close" bindtap="cancelEdit">
           <view class="sheet-close-icon"></view>
         </button>
       </view>
 
+      <!-- 修改待办 -->
+      <block wx:if="{{sheetMode === 'edit'}}">
       <input
         class="field edit-field"
         value="{{editContent}}"
@@ -335,6 +348,46 @@
       </picker>
 
       <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存</button>
+      </block>
+
+      <!-- 设置提醒 -->
+      <block wx:else>
+        <view class="remind-summary">
+          <text class="remind-summary-title">{{remindTodoContent}}</text>
+          <text class="remind-summary-meta">{{remindTodoDue}}</text>
+        </view>
+
+        <view class="remind-options">
+          <view
+            wx:for="{{remindOptions}}"
+            wx:key="label"
+            class="remind-option {{index === remindSelected ? 'remind-option--active' : ''}} {{item.invalid ? 'remind-option--disabled' : ''}}"
+            data-index="{{index}}"
+            bindtap="onRemindOptionTap"
+          >
+            <text>{{item.label}}</text>
+            <text wx:if="{{item.timeText}}" class="remind-option-time">{{item.timeText}}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{remindSelected === remindOptions.length - 1}}" class="remind-custom">
+          <view class="edit-row">
+            <text class="edit-label">日期</text>
+            <picker mode="date" value="{{remindCustomDate}}" start="{{todayDate}}" bindchange="onRemindCustomDateChange">
+              <view class="picker-value">{{remindCustomDate}}</view>
+            </picker>
+          </view>
+          <view class="edit-row">
+            <text class="edit-label">时间</text>
+            <picker mode="time" value="{{remindCustomTime}}" bindchange="onRemindCustomTimeChange">
+              <view class="time-picker">{{remindCustomTime}}</view>
+            </picker>
+          </view>
+        </view>
+
+        <view wx:if="{{remindHasActive}}" class="remind-cancel" bindtap="cancelReminderFlow">取消当前提醒</view>
+        <button class="primary-button save-button" loading="{{remindSubmitting}}" bindtap="submitReminder">确认提醒</button>
+      </block>
     </view>
   </view>
 </view>

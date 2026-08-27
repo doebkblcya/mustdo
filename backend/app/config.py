@@ -33,6 +33,7 @@ class Settings:
     deepseek_model: str
     wechat_app_id: str
     wechat_app_secret: str
+    wechat_template_id: str
     admin_session_seconds: int
     admin_cookie_secure: bool
 
@@ -62,6 +63,7 @@ def get_settings() -> Settings:
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
         wechat_app_id=os.getenv("WECHAT_APP_ID", ""),
         wechat_app_secret=os.getenv("WECHAT_APP_SECRET", ""),
+        wechat_template_id=os.getenv("WECHAT_TEMPLATE_ID", ""),
         admin_session_seconds=int(os.getenv("ADMIN_SESSION_SECONDS", "1800")),
         admin_cookie_secure=os.getenv("ADMIN_COOKIE_SECURE", "1") == "1",
     )

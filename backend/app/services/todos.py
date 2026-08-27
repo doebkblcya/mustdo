@@ -3,12 +3,13 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
-from app.schemas import TodoGroups, TodoListResponse, TodoPublic
+from app.schemas import ReminderPublic, TodoGroups, TodoListResponse, TodoPublic
+from app.services.reminders import cancel_reminder, get_reminder
 from app.time_utils import today_date, tomorrow_date, utcish_now_iso
 
 
 def row_to_todo(row: sqlite3.Row) -> TodoPublic:
-    return TodoPublic(
+    todo = TodoPublic(
         id=row["id"],
         content=row["content"],
         due_date=date.fromisoformat(row["due_date"]),
@@ -18,6 +19,14 @@ def row_to_todo(row: sqlite3.Row) -> TodoPublic:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+    # list_grouped_todos 用 LEFT JOIN 带出提醒摘要（r_* 前缀列）
+    if "r_remind_at" in row.keys() and row["r_remind_at"] is not None and row["r_status"] != "cancelled":
+        todo.reminder = ReminderPublic(
+            remind_at=row["r_remind_at"],
+            status=row["r_status"],
+            error_code=row["r_error_code"],
+        )
+    return todo
 
 
 def _todo_sort_key(todo: TodoPublic) -> tuple[bool, bool, bool, str, int]:
@@ -35,12 +44,13 @@ def list_grouped_todos(db: sqlite3.Connection, user_id: int) -> TodoListResponse
     tomorrow = tomorrow_date()
     rows = db.execute(
         """
-        SELECT *
-        FROM todos
-        WHERE user_id = ?
-          AND deleted_at IS NULL
-          AND due_date >= ?
-        ORDER BY due_date ASC, id ASC
+        SELECT t.*, r.remind_at AS r_remind_at, r.status AS r_status, r.error_code AS r_error_code
+        FROM todos t
+        LEFT JOIN todo_reminders r ON r.todo_id = t.id
+        WHERE t.user_id = ?
+          AND t.deleted_at IS NULL
+          AND t.due_date >= ?
+        ORDER BY t.due_date ASC, t.id ASC
         """,
         (user_id, today.isoformat()),
     ).fetchall()
@@ -125,8 +135,13 @@ def update_todo(
         """,
         params,
     )
+    # 状态联动：完成 / 改期（日期或具体时间）→ 取消提醒
+    if {"due_date", "due_time", "status"} & values.keys():
+        cancel_reminder(db, user_id, todo_id)
     db.commit()
-    return row_to_todo(_get_owned_todo_any(db, user_id, todo_id))
+    updated = row_to_todo(_get_owned_todo_any(db, user_id, todo_id))
+    updated.reminder = get_reminder(db, todo_id)
+    return updated
 
 
 def soft_delete_todo(db: sqlite3.Connection, user_id: int, todo_id: int) -> bool:
@@ -139,6 +154,8 @@ def soft_delete_todo(db: sqlite3.Connection, user_id: int, todo_id: int) -> bool
         """,
         (now, now, todo_id, user_id),
     )
+    if cursor.rowcount > 0:
+        cancel_reminder(db, user_id, todo_id)
     db.commit()
     return cursor.rowcount > 0
 

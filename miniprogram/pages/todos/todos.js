@@ -25,6 +25,54 @@ function formatDateCN(dateStr) {
   return parseInt(parts[1], 10) + "月" + parseInt(parts[2], 10) + "日";
 }
 
+// ---- Reminder time helpers ----
+
+function pad2(n) {
+  return n < 10 ? "0" + n : "" + n;
+}
+
+// "2026-08-25" + "14:30" → local Date
+function dateTimeToDate(dateStr, timeStr) {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const [h, mi] = timeStr.split(":").map(Number);
+  return new Date(y, mo - 1, d, h, mi, 0);
+}
+
+function toDateStr(d) {
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+
+function toTimeStr(d) {
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+}
+
+// local Date → "2026-08-25T14:30:00+08:00"（后端按 Asia/Shanghai 解析）
+function toIsoLocal(d) {
+  return toDateStr(d) + "T" + toTimeStr(d) + ":00+08:00";
+}
+
+// "2026-08-25T14:30:00+08:00" → Date（带偏移安全解析）
+function parseIso(isoStr) {
+  const m = isoStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:([+-])(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  let ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  if (m[7] && m[8]) {
+    const offsetMin = (+m[8]) * 60 + (+m[9] || 0);
+    ms -= (m[7] === "+" ? 1 : -1) * offsetMin * 60000;
+  }
+  return new Date(ms);
+}
+
+// 提醒预设（分钟偏移）与选择优先级：默认提前30分钟，无效则就近降级
+const REMIND_PRESETS = [
+  { label: "准时提醒", minutesBefore: 0 },
+  { label: "提前 10 分钟", minutesBefore: 10 },
+  { label: "提前 30 分钟", minutesBefore: 30 },
+  { label: "提前 1 小时", minutesBefore: 60 },
+];
+const REMIND_PRESET_PRIORITY = [2, 1, 0, 3]; // 提前30 → 提前10 → 准时 → 提前1小时
+const REMIND_CUSTOM_INDEX = REMIND_PRESETS.length; // 自定义选项下标
+
 // Swipe-to-reveal
 const SWIPE_ZONE = 80; // px — pin / delete zone width
 const SWIPE_THRESHOLD = 40; // px — commit threshold
@@ -95,12 +143,27 @@ Page({
     editVisible: false,
     sheetTranslateY: 0,
     maskOpacity: 0,
+    sheetMode: "edit", // 'edit' | 'reminder' —— 共用同一张底部弹层
     editTodoId: null,
     editContent: "",
     editDate: "",
     editTime: "",
     editUseTime: false,
     editSubmitting: false,
+
+    // Reminder sheet
+    remindTodoId: null,
+    remindTodoContent: "",
+    remindTodoDue: "",
+    remindOptions: [],
+    remindSelected: 0,
+    remindCustomDate: "",
+    remindCustomTime: "",
+    remindSubmitting: false,
+    remindHasActive: false,
+
+    // 消息落地定位：待办卡片高亮 id（flash 动画后清零）
+    flashId: 0,
 
     // Tab pill
     pillX: 0,
@@ -148,10 +211,14 @@ Page({
 
   // ========== Lifecycle ==========
 
-  onLoad() {
+  onLoad(options) {
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
+    }
+    // 订阅消息携带的定位参数：pages/todos/todos?id=123
+    if (options && options.id) {
+      this._focusTodoId = Number(options.id);
     }
     this.setData({
       user: api.getStoredUser(),
@@ -262,6 +329,9 @@ Page({
         this.applyDateFilter(this.data.selectedDate);
       }
       this._syncUpcomingLabel();
+      if (this._focusTodoId) {
+        this._focusTodo();
+      }
     } catch (error) {
       if (error.statusCode === 401) {
         api.clearSession();
@@ -693,11 +763,12 @@ Page({
     item = fromIndex !== -1 ? todayGroup[fromIndex] : null;
     if (!item || item.status !== "pending") return;
 
-    // Optimistic: leave source group → join tomorrow (content/time/pinned kept)
+    // Optimistic: leave source group → join tomorrow (content/time/pinned kept,
+    // reminder 由后端因改期联动取消，本地同步清掉)
     const groups = { ...todos.groups };
     groups[fromGroup] = groups[fromGroup].filter((t) => t.id !== id);
     groups.tomorrow = (groups.tomorrow || [])
-      .concat({ ...item, due_date: tomorrow })
+      .concat({ ...item, due_date: tomorrow, reminder: null })
       .sort(_todoSort);
     this.data.todos = { ...todos, groups };
 
@@ -734,16 +805,22 @@ Page({
     const currentStatus = event.currentTarget.dataset.status;
     const idx = Number(event.currentTarget.dataset.index);
     const newStatus = currentStatus === "done" ? "pending" : "done";
+    const prev = this.findTodo(id);
+    const prevReminder = prev ? prev.reminder : null;
+    // 完成待办 → 后端联动取消提醒，本地同步清掉
+    const clearReminder = newStatus === "done";
 
     // Spring check animation
     this._animateCheck(idx, newStatus);
 
     // Optimistic update
     const items = this.data.items.map((item) =>
-      item.id === id ? { ...item, status: newStatus } : item
+      item.id === id
+        ? { ...item, status: newStatus, reminder: clearReminder ? null : item.reminder }
+        : item
     );
     this.setData({ items });
-    this.patchGroupItem(id, { status: newStatus });
+    this.patchGroupItem(id, { status: newStatus, reminder: clearReminder ? null : prevReminder });
     this._buildCalendar(); // pending ⇄ done changes the dot marks
     this._syncTodayState(); // entry visibility + auto-leave organize when empty
 
@@ -768,7 +845,7 @@ Page({
         }, 380);
       }
     } catch (error) {
-      this.patchGroupItem(id, { status: currentStatus });
+      this.patchGroupItem(id, { status: currentStatus, reminder: prevReminder });
       // Rebuild the view — restores the item if it was already removed
       this._renderCurrentView();
       wx.showToast({ title: error.message || "操作失败", icon: "none" });
@@ -1029,6 +1106,7 @@ Page({
       this._editCloseTimer = null;
     }
     this.setData({
+      sheetMode: "edit",
       editVisible: true,
       editTodoId: todo.id,
       editContent: todo.content,
@@ -1232,6 +1310,215 @@ Page({
       wx.showToast({ title: error.message || "保存失败", icon: "none" });
       this.setData({ editSubmitting: false });
     }
+  },
+
+  // ========== Reminder (微信订阅消息提醒) ==========
+
+  openReminderPanel(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const todo = this.findTodo(id);
+    if (!todo) {
+      wx.showToast({ title: "待办不存在", icon: "none" });
+      return;
+    }
+    if (!todo.due_time) {
+      // 缺少具体时间：提示并打开编辑面板引导补充
+      wx.showToast({ title: "请先设置明确时间", icon: "none" });
+      this.editTodo(event);
+      return;
+    }
+    if (this._editCloseTimer) {
+      clearTimeout(this._editCloseTimer);
+      this._editCloseTimer = null;
+    }
+    const now = new Date();
+    const base = dateTimeToDate(todo.due_date, todo.due_time);
+    const options = REMIND_PRESETS.map((opt) => {
+      const t = new Date(base.getTime() - opt.minutesBefore * 60000);
+      const invalid = t <= now;
+      return {
+        label: opt.label,
+        invalid,
+        timeText: invalid ? "已过去" : toTimeStr(t),
+        value: toIsoLocal(t),
+      };
+    });
+    // 默认提前30分钟；已过去则按就近优先级降级；全过期 → 自定义
+    let selected = -1;
+    for (const idx of REMIND_PRESET_PRIORITY) {
+      if (!options[idx].invalid) {
+        selected = idx;
+        break;
+      }
+    }
+    const customDefault = new Date(now.getTime() + 3600000);
+    options.push({ label: "自定义日期和时间", invalid: false, timeText: "", value: "" });
+    this.setData({
+      sheetMode: "reminder",
+      editVisible: true,
+      remindTodoId: todo.id,
+      remindTodoContent: todo.content,
+      remindTodoDue: `${todo.due_date}${todo.due_time ? " " + todo.due_time : ""}`,
+      remindOptions: options,
+      remindSelected: selected >= 0 ? selected : REMIND_CUSTOM_INDEX,
+      remindCustomDate: toDateStr(customDefault),
+      remindCustomTime: toTimeStr(customDefault),
+      remindSubmitting: false,
+      remindHasActive: Boolean(todo.reminder && todo.reminder.status !== "cancelled"),
+    });
+    this._measureAndOpenSheet();
+  },
+
+  onRemindOptionTap(event) {
+    const idx = Number(event.currentTarget.dataset.index);
+    const opt = this.data.remindOptions[idx];
+    if (!opt || opt.invalid) return;
+    this.setData({ remindSelected: idx });
+  },
+
+  onRemindCustomDateChange(event) {
+    this.setData({ remindCustomDate: event.detail.value });
+  },
+
+  onRemindCustomTimeChange(event) {
+    this.setData({ remindCustomTime: event.detail.value });
+  },
+
+  submitReminder() {
+    if (this.data.remindSubmitting) return;
+    const todoId = this.data.remindTodoId;
+    const options = this.data.remindOptions;
+    const selected = this.data.remindSelected;
+
+    let remindAt;
+    if (selected === REMIND_CUSTOM_INDEX) {
+      remindAt =
+        this.data.remindCustomDate + "T" + this.data.remindCustomTime + ":00+08:00";
+      const t = parseIso(remindAt);
+      if (!t || t <= new Date()) {
+        wx.showToast({ title: "提醒时间必须晚于当前时间", icon: "none" });
+        return;
+      }
+    } else {
+      const opt = options[selected];
+      if (!opt || opt.invalid) {
+        wx.showToast({ title: "该时间已过去，请选择其他选项", icon: "none" });
+        return;
+      }
+      remindAt = opt.value;
+    }
+
+    const self = this;
+    this.setData({ remindSubmitting: true });
+    const templateId = config.SUBSCRIBE_TEMPLATE_ID;
+    wx.requestSubscribeMessage({
+      tmplIds: [templateId],
+      success(res) {
+        if (res[templateId] !== "accept") {
+          self.setData({ remindSubmitting: false });
+          wx.showToast({ title: "未授权订阅，无法设置提醒", icon: "none" });
+          return;
+        }
+        api
+          .setReminder(todoId, remindAt)
+          .then((data) => {
+            const reminder =
+              data && data.reminder
+                ? data.reminder
+                : { remind_at: remindAt, status: "pending" };
+            self.patchGroupItem(todoId, { reminder });
+            self.setData({
+              items: self.data.items.map((item) =>
+                item.id === todoId ? { ...item, reminder } : item
+              ),
+              remindSubmitting: false,
+              remindHasActive: true,
+            });
+            wx.vibrateShort({ type: "light" });
+            self._animateSheetOut(0);
+            wx.showToast({ title: "已设置提醒", icon: "none" });
+          })
+          .catch((err) => {
+            self.setData({ remindSubmitting: false });
+            wx.showToast({ title: err.message || "设置失败", icon: "none" });
+          });
+      },
+      fail() {
+        self.setData({ remindSubmitting: false });
+        wx.showToast({ title: "订阅授权失败，请重试", icon: "none" });
+      },
+    });
+  },
+
+  cancelReminderFlow() {
+    const todoId = this.data.remindTodoId;
+    const self = this;
+    wx.showModal({
+      title: "取消提醒",
+      content: "确定取消这条待办的提醒？",
+      success(res) {
+        if (!res.confirm) return;
+        api
+          .deleteReminder(todoId)
+          .then(() => {
+            self.patchGroupItem(todoId, { reminder: null });
+            self.setData({
+              items: self.data.items.map((item) =>
+                item.id === todoId ? { ...item, reminder: null } : item
+              ),
+              remindHasActive: false,
+            });
+            wx.showToast({ title: "已取消提醒", icon: "none" });
+            self._animateSheetOut(0);
+          })
+          .catch((err) => {
+            wx.showToast({ title: err.message || "取消失败", icon: "none" });
+          });
+      },
+    });
+  },
+
+  // 消息落地定位：切到所在视图 → 滚动到卡片 → 高亮闪烁
+  _focusTodo() {
+    const id = this._focusTodoId;
+    this._focusTodoId = null;
+    if (!id) return;
+    const todos = this.data.todos;
+    if (!todos || !todos.groups) return;
+    const todo = this.findTodo(id);
+    if (!todo) return;
+    const today = todos.today_date;
+    const tomorrow = todos.tomorrow_date;
+    let targetView = "upcoming";
+    if (todo.due_date === today) targetView = "today";
+    else if (todo.due_date === tomorrow) targetView = "tomorrow";
+    if (this.data.activeView !== targetView) {
+      this._collapseCalendar();
+      this.setData({ selectedDate: "" });
+      this.applyActiveView(targetView);
+      const tabIndex = Object.keys(VIEW_META).indexOf(targetView);
+      this._animatePill(tabIndex);
+      this._syncUpcomingLabel();
+    } else if (this.data.selectedDate) {
+      this.clearDateFilter();
+    }
+    this.setData({ flashId: id });
+    setTimeout(() => {
+      wx.createSelectorQuery().select("#todo-" + id).scrollIntoView();
+    }, 150);
+    if (this._flashTimer) clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => this.setData({ flashId: 0 }), 2600);
+  },
+
+  formatRemindAt(isoStr) {
+    const m = isoStr && isoStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return "";
+    const dateStr = m[1] + "-" + m[2] + "-" + m[3];
+    const prefix =
+      this.data.todayDate && dateStr === this.data.todayDate
+        ? "今天"
+        : parseInt(m[2], 10) + "月" + parseInt(m[3], 10) + "日";
+    return prefix + " " + m[4] + ":" + m[5];
   },
 
   // ========== Composer bar (keyboard ⇄ voice) ==========

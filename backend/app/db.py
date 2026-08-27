@@ -78,6 +78,27 @@ def init_db() -> None:
                 ON todos(user_id, deleted_at);
 
             -- ============================================================
+            -- 待办提醒（微信订阅消息）
+            -- todo_id UNIQUE：每条待办同时保留一个有效提醒（upsert 覆盖）
+            -- ============================================================
+
+            CREATE TABLE IF NOT EXISTS todo_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id INTEGER NOT NULL UNIQUE REFERENCES todos(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                remind_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'sent', 'failed', 'cancelled')),
+                created_at TEXT NOT NULL,
+                sent_at TEXT,
+                error_code TEXT,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_todo_reminders_status_remind_at
+                ON todo_reminders(status, remind_at);
+
+            -- ============================================================
             -- Admin console tables (separate from WeChat-user identity)
             -- ============================================================
 

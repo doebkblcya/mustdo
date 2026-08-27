@@ -538,6 +538,74 @@
   transform: translateY(-50%) rotate(45deg);
 }
 
+/* ---- Reminder button (bell; on = accent) ---- */
+
+.remind-btn {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  color: #8e8e93;
+}
+.remind-btn::after { border: none; }
+.remind-btn:active { background: #f0f0f2; }
+.remind-btn--on { color: #ff9f0a; }
+
+/* 铃铛：拱形钟体 + 底部钟锤 */
+.remind-icon {
+  position: relative;
+  width: 24rpx;
+  height: 20rpx;
+  border: 3rpx solid currentColor;
+  border-bottom: none;
+  border-radius: 14rpx 14rpx 4rpx 4rpx;
+  box-sizing: border-box;
+}
+.remind-icon::before {
+  content: '';
+  position: absolute;
+  left: -5rpx;
+  right: -5rpx;
+  bottom: 0;
+  height: 3rpx;
+  border-radius: 2rpx;
+  background: currentColor;
+}
+.remind-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -9rpx;
+  transform: translateX(-50%);
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* 卡片内提醒行（内容下方） */
+.todo-reminder {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #ff9f0a;
+}
+
+/* 消息落地定位：高亮闪烁 */
+@keyframes todoFlash {
+  0% { background: #fff4e0; }
+  100% { background: #ffffff; }
+}
+.todo-item--flash {
+  animation: todoFlash 2.4s ease;
+}
+
 /* ---- Todo item (slides to reveal zones) ---- */
 
 .todo-item {
@@ -1183,6 +1251,64 @@
 
 .save-button {
   margin-top: 36rpx;
+}
+
+/* ---- Reminder sheet ---- */
+
+.remind-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 20rpx 0 8rpx;
+}
+.remind-summary-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.remind-summary-meta {
+  font-size: 24rpx;
+  color: #8e8e93;
+}
+
+.remind-options {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12rpx;
+}
+.remind-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 8rpx;
+  border-bottom: 1rpx solid #f0f0f2;
+  font-size: 28rpx;
+  color: #1d1d1f;
+}
+.remind-option:active { background: #fafafa; }
+.remind-option--active {
+  color: #ff9f0a;
+  font-weight: 600;
+}
+.remind-option--disabled {
+  color: #c7c7cc;
+}
+.remind-option-time {
+  font-size: 24rpx;
+  color: #8e8e93;
+}
+.remind-option--active .remind-option-time { color: #ff9f0a; }
+
+.remind-custom {
+  margin-top: 8rpx;
+}
+
+.remind-cancel {
+  margin-top: 28rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #ff453a;
+  padding: 16rpx 0;
 }
 
 /* ================================================================

@@ -140,6 +140,18 @@ function deleteTodo(id) {
   return request("/api/todos/" + id, { method: "DELETE" });
 }
 
+// 设置/更新待办提醒（一次性订阅消息）
+function setReminder(todoId, remindAt) {
+  return request("/api/todos/" + todoId + "/reminder", {
+    method: "PUT",
+    data: { remind_at: remindAt },
+  });
+}
+
+function deleteReminder(todoId) {
+  return request("/api/todos/" + todoId + "/reminder", { method: "DELETE" });
+}
+
 // 垃圾桶列表：type = 'deleted' | 'overdue'，缺省返回计数摘要
 function listTrash(type) {
   return request("/api/trash" + (type ? "?type=" + type : ""));
@@ -331,6 +343,8 @@ module.exports = {
   listTodos: listTodos,
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,
+  setReminder: setReminder,
+  deleteReminder: deleteReminder,
   listTrash: listTrash,
   parseTodos: parseTodos,
   batchCreateTodos: batchCreateTodos,

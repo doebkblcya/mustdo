@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -31,6 +31,20 @@ class AuthTokenResponse(BaseModel):
     needs_invite: bool
 
 
+class ReminderPublic(BaseModel):
+    remind_at: str
+    status: Literal["pending", "sent", "failed", "cancelled"]
+    error_code: str | None = None
+
+
+class ReminderUpsertRequest(BaseModel):
+    remind_at: datetime
+
+
+class ReminderResponse(BaseModel):
+    reminder: ReminderPublic
+
+
 class TodoPublic(BaseModel):
     id: int
     content: str
@@ -40,6 +54,7 @@ class TodoPublic(BaseModel):
     pinned: bool
     created_at: str
     updated_at: str
+    reminder: ReminderPublic | None = None
 
 
 class TodoGroups(BaseModel):
