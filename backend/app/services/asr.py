@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 import struct
+from dataclasses import dataclass
 from uuid import uuid4
 
 import httpx
@@ -61,13 +62,30 @@ def pcm_to_wav(
 class VolcAsrError(RuntimeError):
     """火山引擎 ASR 识别失败。"""
 
+    def __init__(self, message: str, *, logid: str | None = None) -> None:
+        super().__init__(message)
+        self.logid = logid
+
 
 class VolcSilentAudioError(VolcAsrError):
     """火山引擎检测到静音/空音频。"""
 
 
-async def recognize_pcm(pcm: bytes) -> str:
-    """将 PCM 音频发送到火山引擎录音文件极速版识别，返回识别文本。
+@dataclass(frozen=True)
+class AsrResult:
+    """Successful ASR output plus the upstream request/lookup ids for metering."""
+
+    text: str
+    request_id: str
+    logid: str | None
+
+
+async def recognize_pcm(pcm: bytes, *, request_id: str | None = None) -> AsrResult:
+    """将 PCM 音频发送到火山引擎录音文件极速版识别，返回识别结果。
+
+    ``request_id`` is the upstream ``X-Api-Request-Id``; when not supplied one
+    is generated. On success the id and ``logid`` are returned so the caller
+    can meter this exact upstream call.
 
     https://docs.volcengine.com/docs/6561/1631584
     """
@@ -76,7 +94,7 @@ async def recognize_pcm(pcm: bytes) -> str:
     wav = pcm_to_wav(pcm)
     audio_base64 = base64.b64encode(wav).decode()
 
-    request_id = uuid4().hex
+    request_id = request_id or uuid4().hex
 
     headers: dict[str, str] = {
         "X-Api-Resource-Id": "volc.bigasr.auc_turbo",
@@ -126,18 +144,18 @@ async def recognize_pcm(pcm: bytes) -> str:
             response.text[:500],
         )
         if status_code == "20000003":
-            raise VolcSilentAudioError("火山引擎检测到静音音频")
-        raise VolcAsrError(f"火山引擎识别失败(code={status_code})")
+            raise VolcSilentAudioError("火山引擎检测到静音音频", logid=logid)
+        raise VolcAsrError(f"火山引擎识别失败(code={status_code})", logid=logid)
 
     try:
         data = response.json()
     except ValueError as exc:
         logger.warning("volc_asr_invalid_json logid=%s", logid)
-        raise VolcAsrError("火山引擎返回格式异常") from exc
+        raise VolcAsrError("火山引擎返回格式异常", logid=logid) from exc
 
     text = (data.get("result") or {}).get("text", "")
     if not text:
-        raise VolcAsrError("火山引擎未返回有效文本")
+        raise VolcAsrError("火山引擎未返回有效文本", logid=logid)
 
     logger.info(
         "volc_asr_done logid=%s audio_seconds=%.3f text_chars=%s",
@@ -146,4 +164,4 @@ async def recognize_pcm(pcm: bytes) -> str:
         len(text),
     )
 
-    return text.strip()
+    return AsrResult(text=text.strip(), request_id=request_id, logid=logid or None)

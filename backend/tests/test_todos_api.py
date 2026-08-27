@@ -17,6 +17,7 @@ from fastapi import HTTPException  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_connection, init_db  # noqa: E402
+from app.services.deepseek import OrganizeOutcome, ParseOutcome, TokenUsage  # noqa: E402
 from app.routers.todos import (  # noqa: E402
     batch_create_todos,
     delete_todo,
@@ -133,7 +134,7 @@ class TodoApiTests(unittest.TestCase):
         fake_groups = [{"name": "工作", "todo_ids": [todo_id]}]
         with patch(
             "app.routers.todos.organize_todos_with_deepseek",
-            new=AsyncMock(return_value=fake_groups),
+            new=AsyncMock(return_value=OrganizeOutcome(groups=fake_groups, usage=TokenUsage(total_tokens=10))),
         ):
             try:
                 result = asyncio.run(organize_todos(payload, db=db, user={"id": user_id}))
@@ -158,11 +159,12 @@ class TodoApiTests(unittest.TestCase):
         ]
         with patch(
             "app.routers.todos.parse_todos_with_deepseek",
-            new=AsyncMock(return_value=fake_items),
+            new=AsyncMock(return_value=ParseOutcome(items=fake_items, usage=TokenUsage(total_tokens=5))),
         ):
             result = asyncio.run(
                 parse_todos(
                     TodoParseRequest(transcript="今天下午三点买菜", source="text"),
+                    db=db,
                     user={"id": user_id},
                 )
             )

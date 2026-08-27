@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 
+from app.admin import mount_admin
 from app.db import cleanup_sessions, init_db
 from app.errors import http_exception_handler, validation_exception_handler
 from app.routers import auth, invites, todos, trash, voice
@@ -35,6 +36,9 @@ def create_app() -> FastAPI:
     app.include_router(todos.router)
     app.include_router(trash.router)
     app.include_router(voice.router)
+
+    # Admin console mounted onto the same app at /admin.
+    mount_admin(app)
 
     return app
 
