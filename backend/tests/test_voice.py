@@ -134,8 +134,10 @@ class VolcAsrServiceTests(unittest.TestCase):
                 result = await recognize_pcm(_pcm_silence(1))
                 return result
 
-        text = asyncio.run(run())
-        self.assertEqual(text, "今天去买菜")
+        result = asyncio.run(run())
+        self.assertEqual(result.text, "今天去买菜")
+        self.assertTrue(result.request_id)
+        self.assertEqual(result.logid, "test-logid")
 
     def test_recognize_pcm_raises_on_silence_audio(self) -> None:
         async def run():

@@ -1,0 +1,75 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">用量汇总（今日）</h3>
+  <span class="text-muted">单位：ASR 时长（秒）、AI Token</span>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-vcenter card-table">
+    <thead>
+      <tr>
+        <th>用户</th>
+        <th>ASR 已用</th>
+        <th>ASR 限额</th>
+        <th>ASR 剩余</th>
+        <th>ASR 开关</th>
+        <th class="text-end">ASR 次数</th>
+        <th>AI 已用</th>
+        <th>AI 限额</th>
+        <th>AI 剩余</th>
+        <th>AI 开关</th>
+        <th class="text-end">AI 次数</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in summary_rows %}
+      <tr>
+        <td>
+          <span class="fw-bold">#{{ r.user_id }}</span>
+          <span class="text-muted">{{ r.openid }}</span>
+        </td>
+        <td>{{ "%.1f"|format(r.asr_used_seconds) }}</td>
+        <td>{{ "不限" if r.asr_limit <= 0 else "%.1f"|format(r.asr_limit) }}</td>
+        <td>
+          {% if r.asr_limit <= 0 or r.asr_used_seconds >= r.asr_limit %}
+            —
+          {% else %}
+            {{ "%.1f"|format(r.asr_limit - r.asr_used_seconds) }}
+          {% endif %}
+        </td>
+        <td>
+          {% if r.asr_enabled %}
+            <span class="badge bg-success">开</span>
+          {% else %}
+            <span class="badge bg-danger">关</span>
+          {% endif %}
+        </td>
+        <td class="text-end">{{ r.asr_calls }}<span class="text-muted"> 成功 {{ r.asr_success }}</span></td>
+        <td>{{ "{:,}".format(r.ai_used_tokens) }}</td>
+        <td>{{ "不限" if r.ai_limit <= 0 else "{:,}".format(r.ai_limit) }}</td>
+        <td>
+          {% if r.ai_limit <= 0 or r.ai_used_tokens >= r.ai_limit %}
+            —
+          {% else %}
+            {{ "{:,}".format(r.ai_limit - r.ai_used_tokens) }}
+          {% endif %}
+        </td>
+        <td>
+          {% if r.ai_enabled %}
+            <span class="badge bg-success">开</span>
+          {% else %}
+            <span class="badge bg-danger">关</span>
+          {% endif %}
+        </td>
+        <td class="text-end">{{ r.ai_calls }}<span class="text-muted"> 成功 {{ r.ai_success }}</span></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="11" class="text-center text-muted">今日没有用量记录</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

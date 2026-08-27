@@ -25,19 +25,34 @@ from app.time_utils import today_date  # noqa: E402
 
 
 class FakeDeepSeekResponse:
-    def __init__(self, content: str | None) -> None:
+    def __init__(self, content: str | None, *, json_raises: bool = False) -> None:
         self.content = content
+        self._json_raises = json_raises
 
     def raise_for_status(self) -> None:
         return None
 
     def json(self) -> dict:
-        return {"choices": [{"message": {"content": self.content}}]}
+        if self._json_raises:
+            import json as _json
+
+            raise _json.JSONDecodeError("non-json body", "", 0)
+        return {
+            "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30,
+                "prompt_cache_hit_tokens": 5,
+                "prompt_cache_miss_tokens": 15,
+            },
+            "choices": [{"message": {"content": self.content}}],
+        }
 
 
 class FakeDeepSeekClient:
     response_content: str | None = None
     last_json: dict | None = None
+    json_raises: bool = False
 
     def __init__(self, **_kwargs) -> None:
         pass
@@ -51,7 +66,10 @@ class FakeDeepSeekClient:
     async def post(self, _url, *, headers, json):
         _ = headers
         FakeDeepSeekClient.last_json = json
-        return FakeDeepSeekResponse(FakeDeepSeekClient.response_content)
+        return FakeDeepSeekResponse(
+            FakeDeepSeekClient.response_content,
+            json_raises=FakeDeepSeekClient.json_raises,
+        )
 
 
 class DeepSeekParserTests(unittest.TestCase):
@@ -66,6 +84,7 @@ class DeepSeekParserTests(unittest.TestCase):
         )
         self.env.start()
         get_settings.cache_clear()
+        FakeDeepSeekClient.json_raises = False
 
     def tearDown(self) -> None:
         self.env.stop()
@@ -81,7 +100,9 @@ class DeepSeekParserTests(unittest.TestCase):
         with patch("app.services.deepseek.httpx.AsyncClient", FakeDeepSeekClient):
             result = asyncio.run(parse_todos_with_deepseek("今天买菜"))
 
-        self.assertEqual(result, [{"content": "买菜", "due_date": today, "due_time": None}])
+        self.assertEqual(result.items, [{"content": "买菜", "due_date": today, "due_time": None}])
+        self.assertEqual(result.usage.total_tokens, 30)
+        self.assertEqual(result.usage.cache_hit_tokens, 5)
         self.assertEqual(FakeDeepSeekClient.last_json["thinking"], {"type": "disabled"})
         self.assertEqual(FakeDeepSeekClient.last_json["response_format"], {"type": "json_object"})
 
@@ -113,12 +134,26 @@ class DeepSeekParserTests(unittest.TestCase):
 
     def test_empty_items_raise_no_todo_error(self) -> None:
         FakeDeepSeekClient.response_content = '{"items":[]}'
+        FakeDeepSeekClient.json_raises = False
 
         with patch("app.services.deepseek.httpx.AsyncClient", FakeDeepSeekClient):
             with self.assertRaises(NoTodoParsedError) as raised:
                 asyncio.run(parse_todos_with_deepseek("今天天气不错"))
 
         self.assertEqual(str(raised.exception), "没有识别到需要新增的待办")
+
+    def test_non_json_response_raises_parse_error(self) -> None:
+        # Upstream returns a non-JSON body (e.g. HTML error page): response.json()
+        # itself raises. This must surface as a DeepSeekParseError (-> 502), not a 500.
+        FakeDeepSeekClient.response_content = "not json"
+        FakeDeepSeekClient.json_raises = True
+
+        with patch("app.services.deepseek.httpx.AsyncClient", FakeDeepSeekClient):
+            with self.assertRaises(DeepSeekParseError) as raised:
+                asyncio.run(parse_todos_with_deepseek("今天买菜"))
+
+        self.assertEqual(str(raised.exception), "DeepSeek 返回格式不合法")
+        self.assertIn("JSONDecodeError", raised.exception.detail)
 
 
 class OrganizeValidationTests(unittest.TestCase):
@@ -194,6 +229,7 @@ class OrganizeDeepSeekTests(unittest.TestCase):
         )
         self.env.start()
         get_settings.cache_clear()
+        FakeDeepSeekClient.json_raises = False
 
     def tearDown(self) -> None:
         self.env.stop()
@@ -213,12 +249,13 @@ class OrganizeDeepSeekTests(unittest.TestCase):
 
         # AI 漏掉的 18 被补入「其他」
         self.assertEqual(
-            result,
+            result.groups,
             [
                 {"name": "工作", "todo_ids": [12, 15]},
                 {"name": "其他", "todo_ids": [18]},
             ],
         )
+        self.assertEqual(result.usage.total_tokens, 30)
         last = FakeDeepSeekClient.last_json
         self.assertEqual(last["thinking"], {"type": "disabled"})
         self.assertEqual(last["response_format"], {"type": "json_object"})

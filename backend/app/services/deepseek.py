@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import threading
+from dataclasses import dataclass
 from datetime import date
 
 import httpx
@@ -12,7 +13,6 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from app.config import get_settings
 from app.schemas import TIME_RE
 from app.time_utils import today_date
-
 
 logger = logging.getLogger("uvicorn.error")
 _deepseek_client: httpx.AsyncClient | None = None
@@ -37,13 +37,59 @@ async def close_deepseek_client() -> None:
 
 
 class DeepSeekParseError(RuntimeError):
-    def __init__(self, message: str, *, detail: str | None = None) -> None:
+    def __init__(self, message: str, *, detail: str | None = None, usage: TokenUsage | None = None) -> None:
         super().__init__(message)
         self.detail = detail
+        # Token accounting is kept even when business parsing fails: if
+        # DeepSeek produced usage, we must still count it (soft cap). Network
+        # failures that never produced a response have usage=None.
+        self.usage = usage
 
 
 class NoTodoParsedError(DeepSeekParseError):
     pass
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token counts lifted straight from the DeepSeek response ``usage``.
+
+    ``total_tokens`` is the billing/limit figure; the others are retained so
+    the admin console can show breakdowns (input/completion/cache).
+    """
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cache_hit_tokens: int = 0
+    cache_miss_tokens: int = 0
+
+    @classmethod
+    def from_response(cls, data: dict) -> TokenUsage:
+        usage = data.get("usage") or {}
+        return cls(
+            prompt_tokens=int(usage.get("prompt_tokens", 0)),
+            completion_tokens=int(usage.get("completion_tokens", 0)),
+            total_tokens=int(usage.get("total_tokens", 0)),
+            cache_hit_tokens=int(usage.get("prompt_cache_hit_tokens", 0)),
+            cache_miss_tokens=int(usage.get("prompt_cache_miss_tokens", 0)),
+        )
+
+
+@dataclass(frozen=True)
+class ParseOutcome:
+    """Business result of an AI parse, plus the token usage to meter."""
+
+    items: list[dict[str, str | None]]
+    usage: TokenUsage
+
+
+@dataclass(frozen=True)
+class OrganizeOutcome:
+    """Business result of an AI organize, plus the token usage to meter."""
+
+    groups: list[dict[str, object]]
+    usage: TokenUsage
 
 
 class ParsedTodoItem(BaseModel):
@@ -121,7 +167,7 @@ def _system_prompt(today: date) -> str:
 """.strip()
 
 
-async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | None]]:
+async def parse_todos_with_deepseek(transcript: str) -> ParseOutcome:
     settings = get_settings()
     if not settings.deepseek_api_key:
         raise DeepSeekParseError("DeepSeek 配置缺失")
@@ -157,22 +203,31 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
     except httpx.HTTPError as exc:
         raise DeepSeekParseError("解析服务连接失败", detail=repr(exc)) from exc
 
+    data = None
+    usage = None
     try:
-        content = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        usage = TokenUsage.from_response(data)
+        content = data["choices"][0]["message"]["content"]
         parsed_json = _loads_deepseek_json(content)
         parsed = ParsedTodoPayload.model_validate(parsed_json)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
         detail = _format_parse_detail(exc, content if "content" in locals() else None)
-        raise DeepSeekParseError("DeepSeek 返回格式不合法", detail=detail) from exc
+        # usage may be None if the response body failed to parse before a usage
+        # block was read; report zero usage in that case.
+        raise DeepSeekParseError(
+            "DeepSeek 返回格式不合法",
+            detail=detail,
+            usage=usage if usage is not None else TokenUsage(),
+        ) from exc
 
     if not parsed.items:
-        raise NoTodoParsedError("没有识别到需要新增的待办")
+        raise NoTodoParsedError("没有识别到需要新增的待办", usage=usage)
 
     normalized: list[dict[str, str | None]] = []
     for item in parsed.items[:20]:
         due_date = item.due_date
-        if due_date < today:
-            due_date = today
+        due_date = max(due_date, today)
         normalized.append(
             {
                 "content": item.content,
@@ -181,7 +236,7 @@ async def parse_todos_with_deepseek(transcript: str) -> list[dict[str, str | Non
             }
         )
 
-    return normalized
+    return ParseOutcome(items=normalized, usage=usage)
 
 
 def _loads_deepseek_json(content: object) -> object:
@@ -271,7 +326,7 @@ def validate_organize_groups(
 async def organize_todos_with_deepseek(
     view: str,
     items: list[dict[str, object]],
-) -> list[dict[str, object]]:
+) -> OrganizeOutcome:
     settings = get_settings()
     if not settings.deepseek_api_key:
         raise DeepSeekParseError("DeepSeek 配置缺失")
@@ -292,6 +347,7 @@ async def organize_todos_with_deepseek(
         "Content-Type": "application/json",
     }
 
+    data = None
     content = None
     try:
         client = get_deepseek_client()
@@ -301,7 +357,9 @@ async def organize_todos_with_deepseek(
             json=payload,
         )
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        usage = TokenUsage.from_response(data)
+        content = data["choices"][0]["message"]["content"]
         parsed = OrganizePayload.model_validate(_loads_deepseek_json(content))
     except httpx.HTTPStatusError as exc:
         detail = f"status={exc.response.status_code} body={exc.response.text[:300]}"
@@ -310,6 +368,15 @@ async def organize_todos_with_deepseek(
         raise DeepSeekParseError("整理服务连接失败", detail=repr(exc)) from exc
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
         detail = _format_parse_detail(exc, content)
-        raise DeepSeekParseError("DeepSeek 返回格式不合法", detail=detail) from exc
+        # data may or may not have set `usage` before the failure; default to
+        # zero usage if the response never carried a usage block.
+        raise DeepSeekParseError(
+            "DeepSeek 返回格式不合法",
+            detail=detail,
+            usage=TokenUsage.from_response(data) if data is not None else None,
+        ) from exc
 
-    return validate_organize_groups(parsed.groups, {item["id"] for item in items})
+    return OrganizeOutcome(
+        groups=validate_organize_groups(parsed.groups, {item["id"] for item in items}),
+        usage=usage,
+    )

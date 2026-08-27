@@ -76,6 +76,86 @@ def init_db() -> None:
                 ON todos(user_id, due_date);
             CREATE INDEX IF NOT EXISTS idx_todos_user_deleted
                 ON todos(user_id, deleted_at);
+
+            -- ============================================================
+            -- Admin console tables (separate from WeChat-user identity)
+            -- ============================================================
+
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                username_normalized TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                session_version INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'disabled')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS user_quotas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                asr_enabled INTEGER NOT NULL DEFAULT 1
+                    CHECK (asr_enabled IN (0, 1)),
+                asr_daily_seconds REAL NOT NULL DEFAULT 0,
+                ai_enabled INTEGER NOT NULL DEFAULT 1
+                    CHECK (ai_enabled IN (0, 1)),
+                ai_daily_tokens INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS asr_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                request_id TEXT NOT NULL,
+                logid TEXT,
+                audio_seconds REAL NOT NULL,
+                status TEXT NOT NULL
+                    CHECK (status IN ('success', 'silence', 'failed')),
+                error_code TEXT,
+                duration_ms INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                purpose TEXT NOT NULL
+                    CHECK (purpose IN ('parse', 'organize')),
+                status TEXT NOT NULL
+                    CHECK (status IN ('success', 'failed')),
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT,
+                duration_ms INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS admin_audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_id INTEGER REFERENCES admins(id),
+                username TEXT,
+                action TEXT NOT NULL,
+                target_type TEXT,
+                target_id TEXT,
+                detail TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_quotas_user
+                ON user_quotas(user_id);
+            CREATE INDEX IF NOT EXISTS idx_asr_usage_user_created
+                ON asr_usage(user_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_ai_usage_user_created
+                ON ai_usage(user_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_admin_audit_created
+                ON admin_audit_logs(created_at);
             """
         )
         _migrate_invite_codes_type(conn)

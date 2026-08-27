@@ -23,11 +23,12 @@ from app.schemas import (
 from app.services.deepseek import (
     DeepSeekParseError,
     NoTodoParsedError,
+    TokenUsage,
     organize_todos_with_deepseek,
     parse_todos_with_deepseek,
 )
+from app.services.quota import check_ai_quota, record_ai_usage
 from app.services.todos import create_todos, list_grouped_todos, soft_delete_todo, update_todo
-
 
 router = APIRouter(prefix="/api/todos", tags=["todos"])
 logger = logging.getLogger("uvicorn.error")
@@ -35,6 +36,36 @@ logger = logging.getLogger("uvicorn.error")
 
 def _elapsed_ms(started_at: float) -> int:
     return round((perf_counter() - started_at) * 1000)
+
+
+def _record_ai_usage(
+    db: sqlite3.Connection,
+    user_id: int,
+    purpose: str,
+    status: str,
+    usage: TokenUsage | None,
+    *,
+    error_code: str | None,
+    started_at: float,
+) -> None:
+    """Persist an AI usage row. ``usage`` may be None when the upstream call
+    never produced a token block (network failure) — then a failed row with
+    zero tokens is still recorded so the call itself is accounted for."""
+    if usage is None:
+        usage = TokenUsage()
+    record_ai_usage(
+        db,
+        user_id,
+        purpose=purpose,
+        status=status,
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        total_tokens=usage.total_tokens,
+        cache_hit_tokens=usage.cache_hit_tokens,
+        cache_miss_tokens=usage.cache_miss_tokens,
+        error_code=error_code,
+        duration_ms=_elapsed_ms(started_at),
+    )
 
 
 @router.get("", response_model=TodoListResponse)
@@ -48,13 +79,17 @@ def list_todos(
 @router.post("/parse", response_model=TodoParseResponse)
 async def parse_todos(
     payload: TodoParseRequest,
+    db: sqlite3.Connection = Depends(get_db),
     user: sqlite3.Row = Depends(current_user_invited),
 ):
-    _ = user
+    user_id = int(user["id"])
     started_at = perf_counter()
     try:
-        items = await parse_todos_with_deepseek(payload.transcript)
+        check_ai_quota(db, user_id)
+        outcome = await parse_todos_with_deepseek(payload.transcript)
     except NoTodoParsedError as exc:
+        # Tokens were consumed even though no todo was parsed: still count them.
+        _record_ai_usage(db, user_id, "parse", "success", exc.usage, error_code=None, started_at=started_at)
         logger.info(
             "todos_parse_done elapsed_ms=%s transcript_chars=%s source=%s items=0",
             _elapsed_ms(started_at),
@@ -67,6 +102,7 @@ async def parse_todos(
             message=str(exc),
         )
     except DeepSeekParseError as exc:
+        _record_ai_usage(db, user_id, "parse", "failed", exc.usage, error_code="parse_error", started_at=started_at)
         logger.warning(
             "todos_parse_failed elapsed_ms=%s transcript_chars=%s source=%s error=%s detail=%s",
             _elapsed_ms(started_at),
@@ -81,16 +117,17 @@ async def parse_todos(
             "解析服务暂时不可用，请稍后重试",
         )
 
+    _record_ai_usage(db, user_id, "parse", "success", outcome.usage, error_code=None, started_at=started_at)
     logger.info(
         "todos_parse_done elapsed_ms=%s transcript_chars=%s source=%s items=%s",
         _elapsed_ms(started_at),
         len(payload.transcript),
         payload.source,
-        len(items),
+        len(outcome.items),
     )
     return TodoParseResponse(
         transcript=payload.transcript,
-        items=[ParsedItemOut.model_validate(item) for item in items],
+        items=[ParsedItemOut.model_validate(item) for item in outcome.items],
     )
 
 
@@ -170,16 +207,20 @@ async def organize_todos(
         seen_ids.add(item.id)
         items.append({"id": item.id, "content": item.content, "due_time": item.due_time})
 
+    started_at = perf_counter()
     try:
-        groups = await organize_todos_with_deepseek(payload.view, items)
+        check_ai_quota(db, user_id)
+        outcome = await organize_todos_with_deepseek(payload.view, items)
     except DeepSeekParseError as exc:
+        _record_ai_usage(db, user_id, "organize", "failed", exc.usage, error_code="organize_error", started_at=started_at)
         raise_api_error(
             status.HTTP_502_BAD_GATEWAY,
             "organize_failed",
             "AI 整理失败，请稍后重试",
         )
 
-    return OrganizeResponse(view=payload.view, groups=groups)
+    _record_ai_usage(db, user_id, "organize", "success", outcome.usage, error_code=None, started_at=started_at)
+    return OrganizeResponse(view=payload.view, groups=outcome.groups)
 
 
 @router.patch("/{todo_id}", response_model=TodoPublic)
@@ -224,4 +265,3 @@ def delete_todo(
     deleted = soft_delete_todo(db, int(user["id"]), todo_id)
     if not deleted:
         raise_api_error(status.HTTP_404_NOT_FOUND, "todo_not_found", "待办不存在")
-    return None
