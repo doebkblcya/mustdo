@@ -15,12 +15,14 @@ from sqladmin import Admin
 from app.admin.audit import JsonAuditBackend
 from app.admin.auth import AdminAuth
 from app.admin.engine import create_admin_engine
+from app.admin.invite_create_view import InviteCreateView
 from app.admin.summary_view import UsageSummaryView
 from app.admin.views import (
     AdminAuditLogView,
     AdminView,
     AiUsageView,
     AsrUsageView,
+    InviteCodeView,
     UserQuotaView,
     UserView,
 )
@@ -58,6 +60,8 @@ def mount_admin(app: FastAPI) -> None:
         AsrUsageView,
         AiUsageView,
         UsageSummaryView,
+        InviteCodeView,
+        InviteCreateView,
         AdminView,
         AdminAuditLogView,
     ):

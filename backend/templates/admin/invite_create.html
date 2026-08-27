@@ -1,0 +1,38 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">新建邀请码</h3>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin:list', identity='invite-code') }}">查看邀请码列表</a>
+</div>
+
+{% for e in errors %}
+<div class="alert alert-danger py-2">{{ e }}</div>
+{% endfor %}
+
+{% if created %}
+<div class="alert alert-success">
+  <div class="fw-bold mb-1">邀请码已创建</div>
+  <div><code class="fs-4">{{ created }}</code></div>
+  <div class="text-muted mt-2">
+    出于安全，明文只显示这一次，请立即复制并记录「给了谁」。库里只保存哈希，之后无法回显。
+  </div>
+</div>
+<a class="btn btn-primary" href="">再建一个</a>
+{% else %}
+<form method="post" action="">
+  <div class="mb-3">
+    <label class="form-label">类型</label>
+    <select name="type" class="form-select">
+      <option value="single" {% if invite_type == 'single' %}selected{% endif %}>单次（使用后失效）</option>
+      <option value="multi" {% if invite_type == 'multi' %}selected{% endif %}>长期（可多人使用）</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">标签</label>
+    <input type="text" name="label" class="form-control" maxlength="100"
+           value="{{ label }}" placeholder="例如：发给同事 A">
+  </div>
+  <button type="submit" class="btn btn-primary">生成</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -115,3 +115,20 @@ class AdminAuditLog(Base):
     target_id: Mapped[str | None]
     detail: Mapped[str | None]
     created_at: Mapped[str]
+
+
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code_hash: Mapped[str] = mapped_column(unique=True)
+    type: Mapped[str]
+    status: Mapped[str]
+    label: Mapped[str | None]
+    created_at: Mapped[str]
+    used_at: Mapped[str | None]
+    used_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    user: Mapped[User | None] = relationship()
+
+    def __repr__(self) -> str:
+        return f"#{self.id} {self.type} ({self.status})"

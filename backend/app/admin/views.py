@@ -15,9 +15,10 @@ from __future__ import annotations
 from typing import ClassVar
 
 from sqladmin import ModelView
+from wtforms import SelectField
 from wtforms.validators import NumberRange
 
-from app.admin.models import Admin, AdminAuditLog, AiUsage, AsrUsage, User, UserQuota
+from app.admin.models import Admin, AdminAuditLog, AiUsage, AsrUsage, InviteCode, User, UserQuota
 
 
 class UserView(ModelView, model=User):
@@ -231,6 +232,61 @@ class AdminView(ModelView, model=Admin):
 
     can_create = False
     can_edit = False
+    can_delete = False
+
+
+class InviteCodeView(ModelView, model=InviteCode):
+    """Invite codes: list + edit status/label only.
+
+    The plaintext code is never stored (only its HMAC hash), so the code column
+    is intentionally omitted from every view. Creation is handled by
+    ``InviteCreateView`` which shows the plaintext exactly once.
+    """
+
+    name = "邀请码"
+    name_plural = "邀请码"
+    icon = "fa-ticket"
+    category = "邀请码"
+
+    column_list: ClassVar[list[str]] = [
+        "id",
+        "type",
+        "status",
+        "label",
+        "created_at",
+        "used_at",
+        "user",
+    ]
+    column_labels: ClassVar[dict[str, str]] = {
+        "id": "ID",
+        "type": "类型",
+        "status": "状态",
+        "label": "标签",
+        "created_at": "创建时间",
+        "used_at": "使用时间",
+        "user": "使用人",
+    }
+    column_searchable_list: ClassVar[list[str]] = ["label", "type", "status"]
+    column_sortable_list: ClassVar[list[str]] = ["id", "type", "status", "created_at", "used_at"]
+    column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
+
+    # Only status (revoke/re-enable) and label are admin-editable; the code hash
+    # and the type are immutable once created.
+    form_columns: ClassVar[list[str]] = ["status", "label"]
+    form_labels: ClassVar[dict[str, str]] = {"status": "状态", "label": "标签"}
+    form_overrides: ClassVar[dict[str, object]] = {"status": SelectField}
+    form_args: ClassVar[dict[str, dict]] = {
+        "status": {
+            "choices": [
+                ("active", "有效"),
+                ("revoked", "已禁用"),
+                ("redeemed", "已用"),
+            ]
+        },
+    }
+
+    can_create = False
+    can_edit = True
     can_delete = False
 
 
