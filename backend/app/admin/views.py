@@ -15,10 +15,20 @@ from __future__ import annotations
 from typing import ClassVar
 
 from sqladmin import ModelView
+from sqladmin.filters import AllUniqueStringValuesFilter, StaticValuesFilter
 from wtforms import SelectField
 from wtforms.validators import NumberRange
 
-from app.admin.models import Admin, AdminAuditLog, AiUsage, AsrUsage, InviteCode, User, UserQuota
+from app.admin.models import (
+    Admin,
+    AdminAuditLog,
+    AiUsage,
+    AsrUsage,
+    InviteCode,
+    TodoReminder,
+    User,
+    UserQuota,
+)
 
 
 class UserView(ModelView, model=User):
@@ -287,6 +297,75 @@ class InviteCodeView(ModelView, model=InviteCode):
 
     can_create = False
     can_edit = True
+    can_delete = False
+
+
+class TodoReminderView(ModelView, model=TodoReminder):
+    """WeChat subscribe-message reminders: read-only ledger.
+
+    Reminders are asynchronous external sends (WeChat) that can fail with a
+    provider errcode. This view lets an admin diagnose failures (status/errcode)
+    without SSH'ing into the box. No create/edit/delete — reminders are created
+    and cleared by the user's own actions.
+    """
+
+    name = "待办提醒"
+    name_plural = "待办提醒"
+    icon = "fa-bell"
+    category = "提醒"
+
+    column_list: ClassVar[list[str]] = [
+        "id",
+        "user",
+        "todo",
+        "remind_at",
+        "status",
+        "sent_at",
+        "error_code",
+        "created_at",
+    ]
+    column_labels: ClassVar[dict[str, str]] = {
+        "id": "ID",
+        "user": "用户",
+        "todo": "待办",
+        "remind_at": "提醒时间",
+        "status": "状态",
+        "sent_at": "发送时间",
+        "error_code": "错误码",
+        "created_at": "创建时间",
+    }
+    column_searchable_list: ClassVar[list[str]] = ["status", "error_code"]
+    column_filters: ClassVar[list[object]] = [
+        StaticValuesFilter(
+            "status",
+            [
+                ("pending", "待发送"),
+                ("sent", "已发送"),
+                ("failed", "发送失败"),
+                ("cancelled", "已取消"),
+            ],
+        ),
+        AllUniqueStringValuesFilter("error_code"),
+    ]
+    column_sortable_list: ClassVar[list[str]] = [
+        "id",
+        "remind_at",
+        "status",
+        "sent_at",
+        "created_at",
+    ]
+    column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "status": lambda obj, _: {
+            "pending": "待发送",
+            "sent": "已发送",
+            "failed": "发送失败",
+            "cancelled": "已取消",
+        }.get(obj.status, obj.status),
+    }
+
+    can_create = False
+    can_edit = False
     can_delete = False
 
 

@@ -20,6 +20,9 @@
         <th>AI 剩余</th>
         <th>AI 开关</th>
         <th class="text-end">AI 次数</th>
+        <th>提醒创建</th>
+        <th>提醒已发</th>
+        <th>提醒失败</th>
       </tr>
     </thead>
     <tbody>
@@ -63,10 +66,16 @@
           {% endif %}
         </td>
         <td class="text-end">{{ r.ai_calls }}<span class="text-muted"> 成功 {{ r.ai_success }}</span></td>
+        <td class="text-end">{{ r.reminder_created }}</td>
+        <td class="text-end">{{ r.reminder_sent }}</td>
+        <td class="text-end">
+          {% if r.reminder_failed %}<span class="badge bg-danger">{{ r.reminder_failed }}</span>
+          {% else %}0{% endif %}
+        </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="11" class="text-center text-muted">今日没有用量记录</td>
+        <td colspan="14" class="text-center text-muted">今日没有用量记录</td>
       </tr>
       {% endfor %}
     </tbody>

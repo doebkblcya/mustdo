@@ -132,3 +132,44 @@ class InviteCode(Base):
 
     def __repr__(self) -> str:
         return f"#{self.id} {self.type} ({self.status})"
+
+
+class Todo(Base):
+    """Minimal projection of ``todos`` for the reminder console (read-only).
+
+    Only the columns needed by the reminder view are mapped; the business API
+    keeps using native sqlite3. Mapped here purely so ``TodoReminder.todo`` can
+    resolve and render the todo content in the admin list.
+    """
+
+    __tablename__ = "todos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    content: Mapped[str]
+    due_date: Mapped[str]
+    due_time: Mapped[str | None]
+    status: Mapped[str]
+    pinned: Mapped[int]
+    created_at: Mapped[str]
+    updated_at: Mapped[str]
+    deleted_at: Mapped[str | None]
+
+    def __repr__(self) -> str:
+        return f"#{self.id} {self.content[:30]}"
+
+
+class TodoReminder(Base):
+    __tablename__ = "todo_reminders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    todo_id: Mapped[int] = mapped_column(ForeignKey("todos.id"), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    remind_at: Mapped[str]
+    status: Mapped[str]
+    created_at: Mapped[str]
+    sent_at: Mapped[str | None]
+    error_code: Mapped[str | None]
+    updated_at: Mapped[str]
+    todo: Mapped[Todo] = relationship(lazy="joined")
+    user: Mapped[User] = relationship(lazy="joined")

@@ -35,10 +35,11 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
             q.user_id IS NOT NULL
             OR EXISTS (SELECT 1 FROM asr_usage a WHERE a.user_id = u.id AND a.created_at >= ?)
             OR EXISTS (SELECT 1 FROM ai_usage a WHERE a.user_id = u.id AND a.created_at >= ?)
+            OR EXISTS (SELECT 1 FROM todo_reminders r WHERE r.user_id = u.id AND r.created_at >= ?)
           )
         ORDER BY u.id
         """,
-        (day_start, day_start),
+        (day_start, day_start, day_start),
     ).fetchall()
 
     asr_today = {
@@ -71,6 +72,20 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
             (day_start,),
         ).fetchall()
     }
+    reminder_today = {
+        int(r["user_id"]): r
+        for r in db.execute(
+            """
+            SELECT user_id,
+                   COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS created_today,
+                   COALESCE(SUM(CASE WHEN status = 'sent' AND sent_at >= ? THEN 1 ELSE 0 END), 0) AS sent_today,
+                   COALESCE(SUM(CASE WHEN status = 'failed' AND updated_at >= ? THEN 1 ELSE 0 END), 0) AS failed_today
+            FROM todo_reminders
+            GROUP BY user_id
+            """,
+            (day_start, day_start, day_start),
+        ).fetchall()
+    }
     quotas = {
         int(r["user_id"]): r
         for r in db.execute("SELECT * FROM user_quotas").fetchall()
@@ -82,6 +97,7 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
         quota = quotas.get(uid)
         asr = asr_today.get(uid)
         ai = ai_today.get(uid)
+        rem = reminder_today.get(uid)
 
         asr_limit = float(quota["asr_daily_seconds"]) if quota else 0.0
         ai_limit = int(quota["ai_daily_tokens"]) if quota else 0
@@ -103,6 +119,9 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
                 "ai_limit": ai_limit,
                 "ai_calls": int(ai["calls"]) if ai else 0,
                 "ai_success": int(ai["success"]) if ai else 0,
+                "reminder_created": int(rem["created_today"]) if rem else 0,
+                "reminder_sent": int(rem["sent_today"]) if rem else 0,
+                "reminder_failed": int(rem["failed_today"]) if rem else 0,
             }
         )
 

@@ -136,5 +136,5 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 - Swipe `setData` 路径：`items[X].swipeX`，读 `this.data.items[index].swipeX`
 
 ## 已知限制
-- 自动化测试少，无忘记密码；管理后台（/admin/）已具备账号/配额/用量/邀请码管理，但管理员创建/改密仍需 CLI（scripts/create_admin.py）
+- 自动化测试少，无忘记密码；管理后台（/admin/）已具备账号/配额/用量/提醒/邀请码管理（提醒为只读诊断视图），但管理员创建/改密仍需 CLI（scripts/create_admin.py）
 - 语音只支持新增，SQLite 适合 MVP

@@ -23,6 +23,7 @@ from app.admin.views import (
     AiUsageView,
     AsrUsageView,
     InviteCodeView,
+    TodoReminderView,
     UserQuotaView,
     UserView,
 )
@@ -62,6 +63,7 @@ def mount_admin(app: FastAPI) -> None:
         UsageSummaryView,
         InviteCodeView,
         InviteCreateView,
+        TodoReminderView,
         AdminView,
         AdminAuditLogView,
     ):
