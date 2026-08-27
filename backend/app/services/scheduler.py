@@ -32,11 +32,10 @@ CONTENT_MAX_CHARS = 20
 
 
 def build_message_data(row: sqlite3.Row) -> dict[str, dict[str, str]]:
-    # 事项时间：对齐模板示例的「HH:MM YYYY-MM-DD」格式
-    due = f"{row['due_time']} {row['due_date']}" if row["due_time"] else row["due_date"]
+    # 事项时间：time 类型字段仅接受 HH:MM（如 14:30），不接受"时+日期"组合
     return {
         FIELD_CONTENT: {"value": (row["content"] or "")[:CONTENT_MAX_CHARS]},
-        FIELD_TIME: {"value": due},
+        FIELD_TIME: {"value": row["due_time"]},
     }
 
 

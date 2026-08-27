@@ -267,7 +267,7 @@ class ReminderTests(unittest.TestCase):
         # 模板字段 ID：thing1=事项主题、time2=事项时间；payload 必须与模板一一
         # 对应（用模板详情页的 {{thing1.DATA}}/{{time2.DATA}} 标识，而非中文标签）。
         self.assertEqual(data["thing1"]["value"], "测试提醒")
-        self.assertEqual(data["time2"]["value"], f"14:30 {today_date().isoformat()}")
+        self.assertEqual(data["time2"]["value"], "14:30")
         self.assertEqual(set(data.keys()), {"thing1", "time2"})
 
     def test_fetch_due_pending_joins_openid(self) -> None:
