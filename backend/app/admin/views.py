@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from sqladmin import ModelView
+from wtforms.validators import NumberRange
 
 from app.admin.models import Admin, AdminAuditLog, AiUsage, AsrUsage, User, UserQuota
 
@@ -102,7 +103,11 @@ class UserQuotaView(ModelView, model=UserQuota):
         "ai_enabled": "AI 开关",
         "ai_daily_tokens": "AI 每日Token限额",
     }
-    # 0 表示不限；服务开关用 0/1 展示。
+    # 0 表示不限；负数无意义（会被解释为“不限额”）——表单层直接拒绝。
+    form_args: ClassVar[dict[str, dict]] = {
+        "asr_daily_seconds": {"validators": [NumberRange(min=0, max=24 * 3600, message="ASR 每日时长不能为负")]},
+        "ai_daily_tokens": {"validators": [NumberRange(min=0, message="AI 每日Token限额不能为负")]},
+    }
     can_create = True
     can_edit = True
     can_delete = False

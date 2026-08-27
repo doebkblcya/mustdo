@@ -203,16 +203,22 @@ async def parse_todos_with_deepseek(transcript: str) -> ParseOutcome:
     except httpx.HTTPError as exc:
         raise DeepSeekParseError("解析服务连接失败", detail=repr(exc)) from exc
 
-    data = response.json()
-    usage = TokenUsage.from_response(data)
+    data = None
+    usage = None
     try:
+        data = response.json()
+        usage = TokenUsage.from_response(data)
         content = data["choices"][0]["message"]["content"]
         parsed_json = _loads_deepseek_json(content)
         parsed = ParsedTodoPayload.model_validate(parsed_json)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
         detail = _format_parse_detail(exc, content if "content" in locals() else None)
+        # usage may be None if the response body failed to parse before a usage
+        # block was read; report zero usage in that case.
         raise DeepSeekParseError(
-            "DeepSeek 返回格式不合法", detail=detail, usage=usage
+            "DeepSeek 返回格式不合法",
+            detail=detail,
+            usage=usage if usage is not None else TokenUsage(),
         ) from exc
 
     if not parsed.items:

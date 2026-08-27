@@ -24,7 +24,18 @@ from app.time_utils import utcish_now_iso
 
 class AdminAuth(AuthenticationBackend):
     def __init__(self) -> None:
-        super().__init__(secret_key=_admin_secret())
+        settings = get_settings()
+        super().__init__(
+            secret_key=settings.secret_key,
+            # Scope the admin session cookie to /admin, use Secure when behind
+            # HTTPS (prod), and keep it short-lived (default 30min) — it only
+            # needs to span an admin working session, and the DB session_version
+            # bump is the revocation path.
+            https_only=settings.admin_cookie_secure,
+            max_age=settings.admin_session_seconds,
+            path="/admin",
+            same_site="lax",
+        )
 
     async def login(self, request: Request) -> bool:
         form = await request.form()
@@ -74,7 +85,3 @@ class AdminAuth(AuthenticationBackend):
             return False
         # Bumping session_version (password change / disable) invalidates old cookies.
         return int(row["session_version"]) == int(session_version)
-
-
-def _admin_secret() -> str:
-    return get_settings().secret_key

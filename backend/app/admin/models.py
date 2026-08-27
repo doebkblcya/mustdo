@@ -39,6 +39,11 @@ class User(Base):
     updated_at: Mapped[str]
     last_login_at: Mapped[str | None]
 
+    def __repr__(self) -> str:
+        """Stable, human-readable identity for the admin console (FK selects,
+        list rows, detail pages). SQLAdmin renders relations via this string."""
+        return f"#{self.id} {self.wechat_openid} ({self.status})"
+
 
 class Admin(Base):
     __tablename__ = "admins"

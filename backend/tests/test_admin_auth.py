@@ -42,6 +42,9 @@ class AdminAuthTests(unittest.TestCase):
             {
                 "DATABASE_PATH": os.path.join(self.tmpdir.name, "test.db"),
                 "SECRET_KEY": "test-secret",
+                # Tests run over http:// so the Secure cookie flag must be off,
+                # matching a local/dev deployment (prod sets ADMIN_COOKIE_SECURE=1).
+                "ADMIN_COOKIE_SECURE": "0",
             },
             clear=False,
         )
