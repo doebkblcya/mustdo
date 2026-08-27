@@ -18,11 +18,11 @@ logger = logging.getLogger("uvicorn.error")
 
 # ============================================================
 # 订阅消息模板字段名 —— 必须与公众平台「待办事项提醒」模板里
-# 勾选的关键词逐字一致。若勾选的关键词有出入，只改这里。
+# 勾选的关键词逐字一致（当前勾选：事项主题 / 事项时间）。
+# 若重新配置模板，只改这里；多传模板没有的字段会报 47003。
 # ============================================================
 FIELD_CONTENT = "事项主题"
 FIELD_TIME = "事项时间"
-FIELD_NOTE = "备注消息"
 
 DEFAULT_INTERVAL_SECONDS = 30
 
@@ -32,7 +32,6 @@ def build_message_data(row: sqlite3.Row) -> dict[str, dict[str, str]]:
     return {
         FIELD_CONTENT: {"value": row["content"]},
         FIELD_TIME: {"value": due},
-        FIELD_NOTE: {"value": "点击查看详情"},
     }
 
 

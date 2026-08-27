@@ -264,9 +264,11 @@ class ReminderTests(unittest.TestCase):
             data = build_message_data(row)
         finally:
             db.close()
+        # 模板仅勾选 事项主题/事项时间：payload 必须与模板字段逐字一致，
+        # 多传未勾选字段会触发微信 47003。
         self.assertEqual(data["事项主题"]["value"], "测试提醒")
         self.assertEqual(data["事项时间"]["value"], f"{today_date().isoformat()} 14:30")
-        self.assertEqual(data["备注消息"]["value"], "点击查看详情")
+        self.assertEqual(set(data.keys()), {"事项主题", "事项时间"})
 
     def test_fetch_due_pending_joins_openid(self) -> None:
         user_id = self._create_user("openid-due")

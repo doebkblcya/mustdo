@@ -9,7 +9,7 @@
 |----|-----------|
 | 订阅消息模板 ID | `HWgp5u4Z_E3QD_vFMzHEZ3_gL0PDdsbtA5i7vjWQ9jc`（`miniprogram/config.js` 的 `SUBSCRIBE_TEMPLATE_ID`） |
 | 后端环境变量 | `WECHAT_TEMPLATE_ID`（同一模板 ID）+ 已有的 `WECHAT_APP_ID` / `WECHAT_APP_SECRET` |
-| 发送载荷字段名 | `scheduler.py` 顶部：`FIELD_CONTENT=事项主题`、`FIELD_TIME=事项时间`、`FIELD_NOTE=备注消息` —— **必须与公众平台模板里实际勾选的关键词逐字一致**，不一致所有发送会报 47003 |
+| 发送载荷字段名 | `scheduler.py` 顶部：`FIELD_CONTENT=事项主题`、`FIELD_TIME=事项时间` —— **必须与公众平台模板里实际勾选的关键词逐字一致**（当前模板仅勾选这两个），多传未勾选字段会报 47003 |
 | 调度间隔 | `scheduler.py` 默认 30s；单 worker（`server.sh` 默认 `WORKERS=1`）保证唯一分发实例 |
 | 消息跳转页面 | `pages/todos/todos?id={todo_id}`（发送时按提醒逐条拼装） |
 
