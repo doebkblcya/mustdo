@@ -1351,7 +1351,7 @@ Page({
       remindCustomDate: toDateStr(customDefault),
       remindCustomTime: toTimeStr(customDefault),
       remindSubmitting: false,
-      remindHasActive: Boolean(todo.reminder && todo.reminder.status !== "cancelled"),
+      remindHasActive: Boolean(todo.reminder),
     });
     this._measureAndOpenSheet();
   },
@@ -1468,17 +1468,6 @@ Page({
           });
       },
     });
-  },
-
-  formatRemindAt(isoStr) {
-    const m = isoStr && isoStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-    if (!m) return "";
-    const dateStr = m[1] + "-" + m[2] + "-" + m[3];
-    const prefix =
-      this.data.todayDate && dateStr === this.data.todayDate
-        ? "今天"
-        : parseInt(m[2], 10) + "月" + parseInt(m[3], 10) + "日";
-    return prefix + " " + m[4] + ":" + m[5];
   },
 
   // ========== Composer bar (keyboard ⇄ voice) ==========

@@ -589,14 +589,6 @@
   background: currentColor;
 }
 
-/* 卡片内提醒行（内容下方） */
-.todo-reminder {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #ff9f0a;
-}
-
 /* ---- Todo item (slides to reveal zones) ---- */
 
 .todo-item {

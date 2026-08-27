@@ -138,7 +138,6 @@
             <view class="todo-content">
               <text class="todo-title">{{item.content}}</text>
               <text class="todo-meta">{{item.meta}}</text>
-              <text wx:if="{{item.reminder}}" class="todo-reminder">提醒 {{formatRemindAt(item.reminder.remind_at)}}</text>
             </view>
             <button
               wx:if="{{item.status === 'pending' && activeView === 'today'}}"

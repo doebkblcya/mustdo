@@ -19,8 +19,9 @@ def row_to_todo(row: sqlite3.Row) -> TodoPublic:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
-    # list_grouped_todos 用 LEFT JOIN 带出提醒摘要（r_* 前缀列）
-    if "r_remind_at" in row.keys() and row["r_remind_at"] is not None and row["r_status"] != "cancelled":
+    # list_grouped_todos 用 LEFT JOIN 带出提醒摘要（r_* 前缀列）。
+    # 仅「待发送」的提醒视为开启中：sent/failed/cancelled 一律不展示（失败不该还亮着）。
+    if "r_remind_at" in row.keys() and row["r_remind_at"] is not None and row["r_status"] == "pending":
         todo.reminder = ReminderPublic(
             remind_at=row["r_remind_at"],
             status=row["r_status"],

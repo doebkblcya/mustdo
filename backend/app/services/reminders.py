@@ -11,7 +11,8 @@ from app.schemas import ReminderPublic
 from app.time_utils import utcish_now_iso
 
 # 仅这些状态的提醒视为「有效」（对用户展示为已开启 / 待发送）。
-ACTIVE_STATUSES = ("pending", "sent", "failed")
+# 收紧为仅 pending：sent 已发完、failed 已失败、cancelled 已取消，都不再算开启中。
+ACTIVE_STATUSES = ("pending",)
 
 
 def normalize_remind_at(value: datetime) -> str:
@@ -109,7 +110,7 @@ def cancel_reminder(db: sqlite3.Connection, user_id: int, todo_id: int) -> None:
 
 
 def get_reminder(db: sqlite3.Connection, todo_id: int) -> ReminderPublic | None:
-    """Effective reminder summary for a todo; cancelled rows read as None."""
+    """Effective reminder summary for a todo; only pending rows read as active."""
     row = db.execute(
         """
         SELECT remind_at, status, error_code
@@ -118,7 +119,7 @@ def get_reminder(db: sqlite3.Connection, todo_id: int) -> ReminderPublic | None:
         """,
         (todo_id,),
     ).fetchone()
-    if row is None or row["status"] == "cancelled":
+    if row is None or row["status"] != "pending":
         return None
     return _row_to_reminder(row)
 

@@ -256,15 +256,6 @@ async function testSortHasTimeFirst() {
   console.log("  ✓ 有时间优先排序");
 }
 
-async function testFormatRemindAt() {
-  const inst = makeInstance();
-  inst.data.todayDate = "2026-08-25";
-  assert.strictEqual(inst.formatRemindAt("2026-08-25T14:30:00+08:00"), "今天 14:30");
-  assert.strictEqual(inst.formatRemindAt("2026-08-27T09:05:00+08:00"), "8月27日 09:05");
-  assert.strictEqual(inst.formatRemindAt(null), "");
-  console.log("  ✓ formatRemindAt 展示");
-}
-
 (async () => {
   console.log("frontend_reminder_smoke:");
   await testPresetDefaultAndBlocking();
@@ -272,7 +263,6 @@ async function testFormatRemindAt() {
   await testSubmitReminder();
   await testLinkageClearsReminder();
   await testSortHasTimeFirst();
-  await testFormatRemindAt();
   console.log("ALL PASS");
   process.exit(0);
 })().catch((err) => {
