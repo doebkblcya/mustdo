@@ -63,14 +63,14 @@ function parseIso(isoStr) {
   return new Date(ms);
 }
 
-// 提醒预设（分钟偏移）与选择优先级：默认提前30分钟，无效则就近降级
+// 提醒预设（分钟偏移）。默认选中「准时提醒」；
+// 某档位提醒时间已过去（剩余时间不足）→ 不可选并提示，不允许创建。
 const REMIND_PRESETS = [
   { label: "准时提醒", minutesBefore: 0 },
   { label: "提前 10 分钟", minutesBefore: 10 },
   { label: "提前 30 分钟", minutesBefore: 30 },
   { label: "提前 1 小时", minutesBefore: 60 },
 ];
-const REMIND_PRESET_PRIORITY = [2, 1, 0, 3]; // 提前30 → 提前10 → 准时 → 提前1小时
 const REMIND_CUSTOM_INDEX = REMIND_PRESETS.length; // 自定义选项下标
 
 // Swipe-to-reveal
@@ -1343,13 +1343,10 @@ Page({
         value: toIsoLocal(t),
       };
     });
-    // 默认提前30分钟；已过去则按就近优先级降级；全过期 → 自定义
-    let selected = -1;
-    for (const idx of REMIND_PRESET_PRIORITY) {
-      if (!options[idx].invalid) {
-        selected = idx;
-        break;
-      }
+    // 默认准时；准时已过（=待办时间已过，剩余时间不足任何档位）→ 不允许创建
+    if (options[0].invalid) {
+      wx.showToast({ title: "剩余时间不足，无法设置提醒", icon: "none" });
+      return;
     }
     const customDefault = new Date(now.getTime() + 3600000);
     options.push({ label: "自定义日期和时间", invalid: false, timeText: "", value: "" });
@@ -1360,7 +1357,7 @@ Page({
       remindTodoContent: todo.content,
       remindTodoDue: `${todo.due_date}${todo.due_time ? " " + todo.due_time : ""}`,
       remindOptions: options,
-      remindSelected: selected >= 0 ? selected : REMIND_CUSTOM_INDEX,
+      remindSelected: 0,
       remindCustomDate: toDateStr(customDefault),
       remindCustomTime: toTimeStr(customDefault),
       remindSubmitting: false,
@@ -1372,7 +1369,12 @@ Page({
   onRemindOptionTap(event) {
     const idx = Number(event.currentTarget.dataset.index);
     const opt = this.data.remindOptions[idx];
-    if (!opt || opt.invalid) return;
+    if (!opt) return;
+    if (opt.invalid) {
+      // 剩余时间不足以提前到该档位：提示并不允许选择
+      wx.showToast({ title: "剩余时间不足，无法" + opt.label, icon: "none" });
+      return;
+    }
     this.setData({ remindSelected: idx });
   },
 
@@ -1402,7 +1404,7 @@ Page({
     } else {
       const opt = options[selected];
       if (!opt || opt.invalid) {
-        wx.showToast({ title: "该时间已过去，请选择其他选项", icon: "none" });
+        wx.showToast({ title: "剩余时间不足，无法设置提醒", icon: "none" });
         return;
       }
       remindAt = opt.value;

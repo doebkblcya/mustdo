@@ -29,7 +29,7 @@ PYTHONPATH=backend .venv/bin/python -m unittest discover -s tests -v   # 101 个
 ## 3. 真机联调（微信开发者工具 → 真机预览）
 
 1. 待办有具体时间 → 卡片铃铛图标（未完成项）→ 点开「设置提醒」弹层。
-2. 验证弹层：默认选中「提前 30 分钟」；若该时间已过自动降级为最近有效选项；全部已过引导「自定义日期和时间」。
+2. 验证弹层：默认选中「准时提醒」；提前档位的提醒时间已过（剩余时间不足）→ 点选提示「剩余时间不足，无法提前 X 分钟」且不选中；待办时间本身已过 → 提示「剩余时间不足，无法设置提醒」，不打开弹层、不允许创建。
 3. 选时间 → 点「确认提醒」→ 微信「订阅消息授权」弹窗 → 接受。
 4. 卡片出现橙色「提醒 今天 14:30」行；铃铛变橙色。
 5. 到点（可在面板选 1-2 分钟后的自定义时间加速验证）收到订阅消息。
@@ -55,4 +55,4 @@ PYTHONPATH=backend .venv/bin/python -m unittest discover -s tests -v   # 101 个
 ## 5. 回归
 
 - 后端：`backend/tests/test_reminders.py`（17 例）+ `test_reminders_api.py`（8 例），全套 101 绿。
-- 前端逻辑（无需真机）：`node scripts/frontend_reminder_smoke.js`（预设降级/ISO 换算/授权流/联动清空/展示）。
+- 前端逻辑（无需真机）：`node scripts/frontend_reminder_smoke.js`（默认准时/不足拦截/ISO 换算/授权流/联动清空/展示）。
