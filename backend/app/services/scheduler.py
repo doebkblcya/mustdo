@@ -17,20 +17,25 @@ from app.time_utils import utcish_now_iso
 logger = logging.getLogger("uvicorn.error")
 
 # ============================================================
-# 订阅消息模板字段名 —— 必须与公众平台「待办事项提醒」模板里
-# 勾选的关键词逐字一致（当前勾选：事项主题 / 事项时间）。
-# 若重新配置模板，只改这里；多传模板没有的字段会报 47003。
+# 订阅消息模板字段 ID —— 必须与公众平台「待办事项提醒」模板详情里的
+# 字段标识逐字一致（见模板详情页 {{thing1.DATA}} / {{time2.DATA}}）。
+# thing1=事项主题（thing 类型，≤20 字）；time2=事项时间（time 类型）。
+# 若调整模板，只改这里；字段 ID 与模板不符会报 47003。
 # ============================================================
-FIELD_CONTENT = "事项主题"
-FIELD_TIME = "事项时间"
+FIELD_CONTENT = "thing1"
+FIELD_TIME = "time2"
 
 DEFAULT_INTERVAL_SECONDS = 30
 
+# thing 类型字段微信限制 20 字符，超长截断避免 47003
+CONTENT_MAX_CHARS = 20
+
 
 def build_message_data(row: sqlite3.Row) -> dict[str, dict[str, str]]:
-    due = f"{row['due_date']} {row['due_time']}" if row["due_time"] else row["due_date"]
+    # 事项时间：对齐模板示例的「HH:MM YYYY-MM-DD」格式
+    due = f"{row['due_time']} {row['due_date']}" if row["due_time"] else row["due_date"]
     return {
-        FIELD_CONTENT: {"value": row["content"]},
+        FIELD_CONTENT: {"value": (row["content"] or "")[:CONTENT_MAX_CHARS]},
         FIELD_TIME: {"value": due},
     }
 

@@ -9,7 +9,7 @@
 |----|-----------|
 | 订阅消息模板 ID | `HWgp5u4Z_E3QD_vFMzHEZ3_gL0PDdsbtA5i7vjWQ9jc`（`miniprogram/config.js` 的 `SUBSCRIBE_TEMPLATE_ID`） |
 | 后端环境变量 | `WECHAT_TEMPLATE_ID`（同一模板 ID）+ 已有的 `WECHAT_APP_ID` / `WECHAT_APP_SECRET` |
-| 发送载荷字段名 | `scheduler.py` 顶部：`FIELD_CONTENT=事项主题`、`FIELD_TIME=事项时间` —— **必须与公众平台模板里实际勾选的关键词逐字一致**（当前模板仅勾选这两个），多传未勾选字段会报 47003 |
+| 发送载荷字段名 | `scheduler.py` 顶部：`FIELD_CONTENT=thing1`（事项主题）、`FIELD_TIME=time2`（事项时间）—— 必须与模板详情页里的字段 ID（`{{thing1.DATA}}`/`{{time2.DATA}}`）逐字一致，字段 ID 不符会报 47003 |
 | 调度间隔 | `scheduler.py` 默认 30s；单 worker（`server.sh` 默认 `WORKERS=1`）保证唯一分发实例 |
 | 消息跳转页面 | `pages/todos/todos?id={todo_id}`（发送时按提醒逐条拼装） |
 
@@ -46,7 +46,7 @@ PYTHONPATH=backend .venv/bin/python -m unittest discover -s tests -v   # 101 个
 
 | 现象 | 原因 / 处理 |
 |------|-------------|
-| 发送全部失败，日志 `47003` | 模板关键词与 `scheduler.py` 三个 `FIELD_*` 常量不一致 → 改常量（或重新配置模板） |
+| 发送全部失败，日志 `47003` | 载荷字段名与模板字段 ID 不一致 → 以模板详情页 `{{thingX.DATA}}` 为准改 `scheduler.py` 的 `FIELD_*` 常量 |
 | `40163/40029` | 登录凭证问题，与提醒无关，检查小程序 AppID |
 | 授权后仍收不到消息 | 一次性订阅：每条提醒需一次授权；用户拒绝过则无额度；消息在体验版可收，无需发布 |
 | 消息点击没定位 | 确认发送 `page` 参数为 `pages/todos/todos?id=N`；页面必须在已发布/体验版中真实存在 |
