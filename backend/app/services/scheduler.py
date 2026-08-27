@@ -61,7 +61,7 @@ async def send_due_reminders_once() -> int:
                 await send_subscribe_message(
                     openid=row["wechat_openid"],
                     template_id=settings.wechat_template_id,
-                    page=f"pages/todos/todos?id={row['todo_id']}",
+                    page="pages/todos/todos",
                     data=data,
                 )
                 mark_reminder_sent(db, row["reminder_id"], utcish_now_iso())

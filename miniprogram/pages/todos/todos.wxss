@@ -597,15 +597,6 @@
   color: #ff9f0a;
 }
 
-/* 消息落地定位：高亮闪烁 */
-@keyframes todoFlash {
-  0% { background: #fff4e0; }
-  100% { background: #ffffff; }
-}
-.todo-item--flash {
-  animation: todoFlash 2.4s ease;
-}
-
 /* ---- Todo item (slides to reveal zones) ---- */
 
 .todo-item {

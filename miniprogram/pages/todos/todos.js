@@ -162,9 +162,6 @@ Page({
     remindSubmitting: false,
     remindHasActive: false,
 
-    // 消息落地定位：待办卡片高亮 id（flash 动画后清零）
-    flashId: 0,
-
     // Tab pill
     pillX: 0,
     pillWidth: 0,
@@ -215,10 +212,6 @@ Page({
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
-    }
-    // 订阅消息携带的定位参数：pages/todos/todos?id=123
-    if (options && options.id) {
-      this._focusTodoId = Number(options.id);
     }
     this.setData({
       user: api.getStoredUser(),
@@ -329,9 +322,6 @@ Page({
         this.applyDateFilter(this.data.selectedDate);
       }
       this._syncUpcomingLabel();
-      if (this._focusTodoId) {
-        this._focusTodo();
-      }
     } catch (error) {
       if (error.statusCode === 401) {
         api.clearSession();
@@ -1478,38 +1468,6 @@ Page({
           });
       },
     });
-  },
-
-  // 消息落地定位：切到所在视图 → 滚动到卡片 → 高亮闪烁
-  _focusTodo() {
-    const id = this._focusTodoId;
-    this._focusTodoId = null;
-    if (!id) return;
-    const todos = this.data.todos;
-    if (!todos || !todos.groups) return;
-    const todo = this.findTodo(id);
-    if (!todo) return;
-    const today = todos.today_date;
-    const tomorrow = todos.tomorrow_date;
-    let targetView = "upcoming";
-    if (todo.due_date === today) targetView = "today";
-    else if (todo.due_date === tomorrow) targetView = "tomorrow";
-    if (this.data.activeView !== targetView) {
-      this._collapseCalendar();
-      this.setData({ selectedDate: "" });
-      this.applyActiveView(targetView);
-      const tabIndex = Object.keys(VIEW_META).indexOf(targetView);
-      this._animatePill(tabIndex);
-      this._syncUpcomingLabel();
-    } else if (this.data.selectedDate) {
-      this.clearDateFilter();
-    }
-    this.setData({ flashId: id });
-    setTimeout(() => {
-      wx.createSelectorQuery().select("#todo-" + id).scrollIntoView();
-    }, 150);
-    if (this._flashTimer) clearTimeout(this._flashTimer);
-    this._flashTimer = setTimeout(() => this.setData({ flashId: 0 }), 2600);
   },
 
   formatRemindAt(isoStr) {

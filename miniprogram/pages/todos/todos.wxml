@@ -118,8 +118,7 @@
             <view class="swipe-icon-img swipe-icon--pin"></view>
           </view>
           <view
-            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}} {{item.id === flashId ? 'todo-item--flash' : ''}}"
-            id="{{'todo-' + item.id}}"
+            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
             style="transform: translateX({{item.swipeX || 0}}px);"
             data-index="{{index}}"
             bindtouchstart="onItemTouchStart"
