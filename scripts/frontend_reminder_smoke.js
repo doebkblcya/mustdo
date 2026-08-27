@@ -240,6 +240,22 @@ async function testLinkageClearsReminder() {
   console.log("  ✓ 完成/移到明天的提醒联动");
 }
 
+async function testSortHasTimeFirst() {
+  const now = new Date();
+  const d = new Date(now.getTime() + 3 * 3600000);
+  const noTime = seedTodo(11, d);
+  noTime.due_time = null;
+  const withTime = seedTodo(12, d);
+  withTime.due_time = "09:30";
+  const inst = seedInstance([noTime, withTime]);
+  // applyDateFilter 内部用 _todoSort 排序：有时间(09:30)在前，无时间在后
+  inst.applyDateFilter(inst.data.todos.today_date);
+  assert.strictEqual(inst.data.items.length, 2, "排序: 两条都在");
+  assert.strictEqual(inst.data.items[0].id, 12, "排序: 有时间在前");
+  assert.strictEqual(inst.data.items[1].id, 11, "排序: 无时间在后");
+  console.log("  ✓ 有时间优先排序");
+}
+
 async function testFormatRemindAt() {
   const inst = makeInstance();
   inst.data.todayDate = "2026-08-25";
@@ -255,6 +271,7 @@ async function testFormatRemindAt() {
   await testIsoRoundTrip();
   await testSubmitReminder();
   await testLinkageClearsReminder();
+  await testSortHasTimeFirst();
   await testFormatRemindAt();
   console.log("ALL PASS");
   process.exit(0);

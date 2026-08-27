@@ -83,10 +83,10 @@ function _todoSort(a, b) {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
   // Pending before done
   if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-  // No-time before has-time
+  // Has-time before no-time
   var aHasTime = !!a.due_time;
   var bHasTime = !!b.due_time;
-  if (aHasTime !== bHasTime) return aHasTime ? 1 : -1;
+  if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
   // By time
   var aTime = a.due_time || '';
   var bTime = b.due_time || '';

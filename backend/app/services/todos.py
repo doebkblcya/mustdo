@@ -33,7 +33,7 @@ def _todo_sort_key(todo: TodoPublic) -> tuple[bool, bool, bool, str, int]:
     return (
         not todo.pinned,
         todo.status == "done",
-        todo.due_time is not None,
+        todo.due_time is None,
         todo.due_time or "",
         todo.id,
     )

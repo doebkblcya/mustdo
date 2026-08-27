@@ -68,7 +68,7 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 
 **动态分类**：due_date==今天→today，==明天→tomorrow，>明天→upcoming，<今天→隐藏，由每日脚本按“超 7 天”硬删（软删超 7 天 或 未软删且截止日期超 7 天，含完成项）
 
-**排序**：`(not pinned?, done?, has_time?, time_or_empty, id)` — 置顶优先→pending 优先→无时间优先→时间升序→id 升序
+**排序**：`(not pinned?, done?, no_time?, time_or_empty, id)` — 置顶优先→pending 优先→有时间优先→时间升序→无时间→id 升序
 
 ### API 路由
 
