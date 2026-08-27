@@ -7,12 +7,15 @@ point at the same file with matching pragmas.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from sqladmin import Admin
 
 from app.admin.audit import JsonAuditBackend
 from app.admin.auth import AdminAuth
 from app.admin.engine import create_admin_engine
+from app.admin.summary_view import UsageSummaryView
 from app.admin.views import (
     AdminAuditLogView,
     AdminView,
@@ -21,6 +24,11 @@ from app.admin.views import (
     UserQuotaView,
     UserView,
 )
+
+# Absolute path to the console's custom templates (independent of CWD so it
+# doesn't break when uvicorn is launched from elsewhere). File is under
+# backend/templates/, so from app/admin/__init__.py that's parents[2].
+_TEMPLATES_DIR = str(Path(__file__).resolve().parents[2] / "templates")
 
 
 def mount_admin(app: FastAPI) -> None:
@@ -41,6 +49,7 @@ def mount_admin(app: FastAPI) -> None:
         base_url="/admin",
         title="Mustdo 管理后台",
         logo_url=None,
+        templates_dir=_TEMPLATES_DIR,
     )
 
     for view in (
@@ -48,6 +57,7 @@ def mount_admin(app: FastAPI) -> None:
         UserQuotaView,
         AsrUsageView,
         AiUsageView,
+        UsageSummaryView,
         AdminView,
         AdminAuditLogView,
     ):
