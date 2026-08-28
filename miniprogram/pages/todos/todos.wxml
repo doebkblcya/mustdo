@@ -242,7 +242,7 @@
         wx:else
         class="composer-editor composer-editor--voice"
         bindtouchstart="onComposerTouchStart"
-        bindtouchmove="onComposerTouchMove"
+        catchtouchmove="onComposerTouchMove"
         bindtouchend="onComposerTouchEnd"
         bindtouchcancel="onComposerTouchCancel"
       >

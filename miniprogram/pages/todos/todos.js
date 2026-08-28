@@ -1666,7 +1666,9 @@ Page({
   },
 
   async startVoice() {
-    if (this.data.recording || this.data.panelActive) return;
+    // 防止：(a) 已在录音 (b) 权限 await 未完成时重入 (c) 原生 recorder 仍在停止中
+    if (this.data.recording || this.data.panelActive || this.recorderStarted) return;
+    if (this._voicePermissionPending) return;
     if (!api.getToken()) {
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
@@ -1701,7 +1703,10 @@ Page({
         format: "pcm",
         frameSize: 4,
       });
+      // start() 后立即标记原生忙碌，防止 onStop 前快速重按再次 start()
+      this.recorderStarted = true;
     } catch (error) {
+      this.recorderStarted = false;
       this.setData({ recording: false });
       wx.showToast({ title: error.errMsg || error.message || "录音启动失败", icon: "none" });
     }
