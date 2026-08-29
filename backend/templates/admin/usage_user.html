@@ -1,0 +1,102 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">用户历史用量</h3>
+  <span class="text-muted">单位：ASR 时长（秒）、AI Token</span>
+</div>
+
+<form method="get" action="" class="row g-3 align-items-end mb-4">
+  <div class="col-md-5">
+    <label class="form-label">用户</label>
+    <select name="user_id" class="form-select">
+      {% for u in users %}
+      <option value="{{ u['id'] }}" {% if u['id'] == user_id %}selected{% endif %}>#{{ u['id'] }} {{ u['wechat_openid'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">时间范围</label>
+    <select name="days" class="form-select">
+      <option value="1" {% if days == 1 %}selected{% endif %}>今天</option>
+      <option value="7" {% if days == 7 %}selected{% endif %}>近 7 天</option>
+      <option value="30" {% if days == 30 %}selected{% endif %}>近 30 天</option>
+      <option value="0" {% if days == 0 %}selected{% endif %}>全部</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary w-100">查看</button>
+  </div>
+</form>
+
+{% if result is none %}
+<div class="text-muted">选择用户后查看其历史用量。</div>
+{% elif result.openid is none %}
+<div class="alert alert-warning">用户不存在。</div>
+{% else %}
+<div class="mb-2">
+  <strong>#{{ result.user_id }}</strong>
+  <span class="text-muted">{{ result.openid }}</span>
+  <span class="badge bg-secondary ms-2">{{ result.since_label }}</span>
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">ASR</div>
+      <table class="table table-sm mb-0">
+        <tr><th>请求次数</th><td class="text-end">{{ result.asr.calls }}</td></tr>
+        <tr><th>音频总时长</th><td class="text-end">{{ "%.1f"|format(result.asr.seconds) }} 秒</td></tr>
+        <tr><th>成功 / 失败</th><td class="text-end">{{ result.asr.success }} / {{ result.asr.failed }}</td></tr>
+        <tr><th>平均耗时</th><td class="text-end">{{ result.asr.avg_ms }} ms</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">AI</div>
+      <table class="table table-sm mb-0">
+        {% for a in result.ai %}
+        <tr>
+          <th>
+            {{ '新增解析' if a.purpose == 'parse' else '动态整理' }}
+            <span class="text-muted">（{{ a.calls }} 次 · 成功 {{ a.success }} / 失败 {{ a.failed }}）</span>
+          </th>
+          <td class="text-end">{{ "{:,}".format(a.total_tokens) }} tokens</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2" class="text-muted">无 AI 调用</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<h5 class="mb-2">按日明细</h5>
+<div class="table-responsive">
+  <table class="table table-sm table-vcenter card-table">
+    <thead>
+      <tr>
+        <th>日期</th>
+        <th class="text-end">ASR 次数</th>
+        <th class="text-end">ASR 秒数</th>
+        <th class="text-end">AI 次数</th>
+        <th class="text-end">AI Tokens</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in result.per_day %}
+      <tr>
+        <td>{{ d.day }}</td>
+        <td class="text-end">{{ d.asr_calls }}</td>
+        <td class="text-end">{{ "%.1f"|format(d.asr_seconds) }}</td>
+        <td class="text-end">{{ d.ai_calls }}</td>
+        <td class="text-end">{{ "{:,}".format(d.ai_tokens) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-center text-muted">该时间范围内没有用量记录</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

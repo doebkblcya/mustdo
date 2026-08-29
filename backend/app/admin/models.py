@@ -135,17 +135,18 @@ class InviteCode(Base):
 
 
 class Todo(Base):
-    """Minimal projection of ``todos`` for the reminder console (read-only).
+    """Minimal projection of ``todos`` for the admin console (read-only).
 
-    Only the columns needed by the reminder view are mapped; the business API
-    keeps using native sqlite3. Mapped here purely so ``TodoReminder.todo`` can
-    resolve and render the todo content in the admin list.
+    Only the columns needed by the console are mapped; the business API keeps
+    using native sqlite3. Used by the read-only todo view and so
+    ``TodoReminder.todo`` can resolve and render the todo content.
     """
 
     __tablename__ = "todos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user: Mapped[User] = relationship(lazy="joined")
     content: Mapped[str]
     due_date: Mapped[str]
     due_time: Mapped[str | None]

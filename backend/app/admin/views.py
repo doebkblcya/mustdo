@@ -25,6 +25,7 @@ from app.admin.models import (
     AiUsage,
     AsrUsage,
     InviteCode,
+    Todo,
     TodoReminder,
     User,
     UserQuota,
@@ -362,6 +363,66 @@ class TodoReminderView(ModelView, model=TodoReminder):
             "failed": "发送失败",
             "cancelled": "已取消",
         }.get(obj.status, obj.status),
+    }
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class TodoView(ModelView, model=Todo):
+    """User todos: read-only. Writing would have to go through the domain
+    service (due_date normalization, reminder linkage, soft-delete), so the
+    console only reads — consistent with the lightweight scope."""
+
+    name = "待办"
+    name_plural = "待办"
+    icon = "fa-list-check"
+    category = "待办"
+
+    column_list: ClassVar[list[str]] = [
+        "id",
+        "user",
+        "content",
+        "due_date",
+        "due_time",
+        "status",
+        "pinned",
+        "deleted_at",
+        "created_at",
+    ]
+    column_labels: ClassVar[dict[str, str]] = {
+        "id": "ID",
+        "user": "用户",
+        "content": "内容",
+        "due_date": "日期",
+        "due_time": "时间",
+        "status": "状态",
+        "pinned": "置顶",
+        "deleted_at": "删除时间",
+        "created_at": "创建时间",
+    }
+    column_searchable_list: ClassVar[list[str]] = ["content"]
+    column_filters: ClassVar[list[object]] = [
+        StaticValuesFilter(
+            "status",
+            [("pending", "未完成"), ("done", "已完成")],
+        ),
+        StaticValuesFilter("pinned", [("0", "否"), ("1", "是")]),
+    ]
+    column_sortable_list: ClassVar[list[str]] = [
+        "id",
+        "due_date",
+        "due_time",
+        "status",
+        "created_at",
+        "deleted_at",
+    ]
+    column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "status": lambda obj, _: {"pending": "未完成", "done": "已完成"}.get(obj.status, obj.status),
+        "pinned": lambda obj, _: "是" if obj.pinned else "否",
+        "deleted_at": lambda obj, _: "已删除" if obj.deleted_at else "",
     }
 
     can_create = False

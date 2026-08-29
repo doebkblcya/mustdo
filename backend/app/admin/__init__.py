@@ -17,6 +17,7 @@ from app.admin.auth import AdminAuth
 from app.admin.engine import create_admin_engine
 from app.admin.invite_create_view import InviteCreateView
 from app.admin.summary_view import UsageSummaryView
+from app.admin.usage_history_view import UserUsageView
 from app.admin.views import (
     AdminAuditLogView,
     AdminView,
@@ -24,6 +25,7 @@ from app.admin.views import (
     AsrUsageView,
     InviteCodeView,
     TodoReminderView,
+    TodoView,
     UserQuotaView,
     UserView,
 )
@@ -58,9 +60,11 @@ def mount_admin(app: FastAPI) -> None:
     for view in (
         UserView,
         UserQuotaView,
+        TodoView,
         AsrUsageView,
         AiUsageView,
         UsageSummaryView,
+        UserUsageView,
         InviteCodeView,
         InviteCreateView,
         TodoReminderView,
