@@ -26,7 +26,8 @@
       "ignore": [],
       "disablePlugins": [],
       "outputPath": ""
-    }
+    },
+    "ignoreDevUnusedFiles": false
   },
   "simulatorPluginLibVersion": {},
   "packOptions": {

@@ -225,3 +225,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 重构临时产物（非项目交付物）
+stitch_mustdo/

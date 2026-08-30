@@ -204,9 +204,16 @@ miniprogram/
   app.js                全局启动逻辑
   app.wxss              全局样式
   config.js             后端 API 地址
+  assets/
+    icons/material/     Material Symbols SVG 源资源
+    icons/png/          96×96 透明 PNG（构建产物，wxml 引用）
   pages/
     auth/               登录 / 注册
     todos/              待办列表和语音输入
+    settings/           设置（添加前确认等）
+    trash/              回收站
+  components/
+    processing-panel/   统一处理面板
   utils/api.js          Bearer Token API client
 ```
 
@@ -233,12 +240,22 @@ request 合法域名：https://mustdo.doebkblcya.com
 - **右滑**：露出置顶区域，松手切换置顶状态，乐观更新 + 本地排序
 - **左滑**：露出删除区域，松手弹回后弹出确认框
 - **编辑按钮**：始终可见，不参与滑动
-- 滑动硬上限 80px，不超出彩色区域
+- 露出宽度按卡片实际按钮数动态计算（`_swipeRevealWidth`），不再用固定 80px 硬上限
+
+### 页面切换
+
+- **tab 条横滑**：tab 行上左右滑动切换 今天/明天/后续（水平位移 >40px 且 ≥ 纵向位移 2 倍触发），列表区保留卡片横滑互不干扰
+- **骨架屏**：卡片数缓存上次真实条数（`SKELETON_COUNT_KEY`），无缓存时按视口撑满首屏，几何与真实卡片 1:1 镜像避免跳版
 
 ### 卡片状态
 
-- **done**：仅文字内容降透明度，卡片背景保持不透明（避免背后滑动区透出）
-- **pinned**：暖白底色 + 左侧橙色 accent 线，视觉层级区别于普通卡片
+- **done**：整卡 `opacity: 0.6`，标题划线变灰，勾选圈变实心黑
+- **pinned**：白色胶囊卡 + 4rpx 黑色粗边框（无背景色/accent 条）
+
+### AI 整理
+
+- 头部「AI 整理」按钮两态切换（进 AI 视图 ⇄ 回默认），无分段切换条
+- 分组结果缓存于本地（fingerprint 未变直接复用），失败自动切回默认视图
 
 ### 日历（后续 tab 展开月历）
 
@@ -254,7 +271,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 今天之前（含翻到过去月份）整段置灰不可点；今天无特殊标记。
 - 圆点（黑色 `#1d1d1f`）：仅该日存在未完成（pending）待办；勾选完成/删除后，下次展开自动刷新。
 - 选中日期仅加粗高亮；选中今天/明天 → 跳到对应 tab 并清空选中；选中其他日期 → 列表过滤为该日、tab 显示日期。
-- 日历为覆盖式展示：`absolute` 定位在 tabs 下方（`tab-section` 相对定位 + `top:100%`），展开时浮在列表上方、不挤压列表；spring 高度折叠动画。
+- 日历为文档流展开（`.calendar-wrap` `position: relative`），展开时挤压列表而非遮挡；spring 高度折叠动画。
 - 数据全部来自 `GET /api/todos` 的 `today/tomorrow/upcoming` 分组（前端聚合 `due_date`），后端零改动。
 
 ## 当前进度

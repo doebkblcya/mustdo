@@ -3,12 +3,20 @@ const api = require("../../utils/api");
 Page({
   data: {
     phase: "launching", // launching | invite | failed
+    inviteTop: 96,
     inviteCode: "",
     error: "",
     submitting: false,
   },
 
   onLoad() {
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+    this.setData({
+      inviteTop: menuButton
+        ? menuButton.bottom + 32
+        : (windowInfo.statusBarHeight || 0) + 76,
+    });
     this.silentLogin();
   },
 
@@ -32,7 +40,7 @@ Page({
   },
 
   onInviteInput(event) {
-    this.setData({ inviteCode: event.detail.value });
+    this.setData({ inviteCode: event.detail.value, error: "" });
   },
 
   submitInvite() {

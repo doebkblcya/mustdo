@@ -7,9 +7,9 @@
   ],
   "window": {
     "navigationBarTitleText": "mustdo",
-    "navigationBarBackgroundColor": "#f2f2f7",
+    "navigationBarBackgroundColor": "#f9f9f9",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f2f2f7"
+    "backgroundColor": "#f9f9f9"
   },
   "sitemapLocation": "sitemap.json"
 }

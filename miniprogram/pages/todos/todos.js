@@ -17,12 +17,22 @@ const SHOW_COMPLETED_KEY = "mustdo_show_completed";
 // AI 动态整理（今天视图）缓存：{fingerprint, groups}
 const ORGANIZE_CACHE_KEY = "mustdo_organize_today";
 
+// 骨架屏数量缓存：上次真实条数 → 本次骨架屏贴近真实长度（避免加载完成跳版）
+const SKELETON_COUNT_KEY = "mustdo_skeleton_count";
+
 // "2026-08-20" → "8月20日"
 function formatDateCN(dateStr) {
   if (!dateStr) return "";
   const parts = dateStr.split("-");
   if (parts.length !== 3) return dateStr;
   return parseInt(parts[1], 10) + "月" + parseInt(parts[2], 10) + "日";
+}
+
+function formatTodoMeta(item, today, tomorrow) {
+  let dateLabel = formatDateCN(item.due_date);
+  if (item.due_date === today) dateLabel = "今天";
+  if (item.due_date === tomorrow) dateLabel = "明天";
+  return dateLabel + (item.due_time ? " " + item.due_time : "");
 }
 
 // ---- Reminder time helpers ----
@@ -73,9 +83,10 @@ const REMIND_PRESETS = [
 ];
 const REMIND_CUSTOM_INDEX = REMIND_PRESETS.length; // 自定义选项下标
 
-// Swipe-to-reveal
-const SWIPE_ZONE = 80; // px — pin / delete zone width
-const SWIPE_THRESHOLD = 40; // px — commit threshold
+// Swipe-to-reveal. Each action is 112rpx wide; JS converts that width to px
+// so the card and the action rail stay aligned on every screen size.
+const SWIPE_ACTION_RPX = 112;
+const SWIPE_THRESHOLD = 36;
 
 // Local sort key (mirrors backend _todo_sort_key)
 function _todoSort(a, b) {
@@ -99,6 +110,10 @@ function _todoSort(a, b) {
 Page({
   data: {
     user: null,
+    statusBarHeight: 0,
+    headerRightOffset: 12,
+    navTop: 24,
+    navHeight: 32,
     activeView: "today",
     viewTitle: "今天",
     viewDate: "",
@@ -106,6 +121,7 @@ Page({
     items: [],
     todos: null,
     loading: false,
+    skeletonItems: [0, 1, 2, 3], // 骨架屏卡片索引数组：onLoad 按视口/上次条数动态生成
     error: "",
     showCompleted: true, // hide/show completed items — read from storage in onLoad
 
@@ -120,6 +136,7 @@ Page({
     recording: false,
     panelActive: false,
     voiceCancelHover: false,
+    recordPermissionVisible: false,
 
     // Composer bar (keyboard ⇄ voice)
     composerMode: "voice", // default: hold-to-talk; toggle switches to text input
@@ -162,10 +179,6 @@ Page({
     remindSubmitting: false,
     remindHasActive: false,
 
-    // Tab pill
-    pillX: 0,
-    pillWidth: 0,
-
     // Calendar (expandable on 后续 tab)
     calendarVisible: false,
     calHeight: 0,
@@ -178,7 +191,6 @@ Page({
   },
 
   // ---- Animation instances (not in data to avoid setData overhead) ----
-  _pillSpring: null,
   _sheetSpring: null,
   _maskSpring: null,
   _checkSprings: {},
@@ -188,9 +200,6 @@ Page({
   _sheetDragState: null,
   _sheetHeight: 0,
   _sheetMeasured: false,
-  _tabPositions: null,
-  _tabWidth: 0,
-  _tabsMeasured: false,
   _swipeState: null,
   _swipeSpring: null,
   _calSpring: null,
@@ -213,8 +222,21 @@ Page({
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
     }
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    this._rpxToPx = windowInfo.windowWidth / 750;
+    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+    // 骨架屏数量：优先贴近上次真实条数（避免加载完成跳版）；无缓存时按视口撑满首屏
+    const viewportCards = Math.max(4, Math.floor(windowInfo.windowHeight / this._rpxToPx / 200));
+    const cachedCount = wx.getStorageSync(SKELETON_COUNT_KEY);
+    const skeletonCount = Number(cachedCount) > 0 ? Math.min(Number(cachedCount), viewportCards) : viewportCards;
+    const skeletonItems = Array.from({ length: skeletonCount }, (_, i) => i);
     this.setData({
       user: api.getStoredUser(),
+      statusBarHeight: windowInfo.statusBarHeight || 0,
+      headerRightOffset: menuButton ? windowInfo.windowWidth - menuButton.left + 4 : 12,
+      navTop: menuButton ? menuButton.top : (windowInfo.statusBarHeight || 0),
+      navHeight: menuButton ? menuButton.height : 32,
+      skeletonItems,
       // First launch defaults to showing completed items (undefined → true)
       showCompleted: wx.getStorageSync(SHOW_COMPLETED_KEY) !== false,
     });
@@ -222,7 +244,6 @@ Page({
 
     // iOS keeps the send action on the keyboard confirm key (no in-bar arrow)
     const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
-    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     this.setData({
       isIOS: device.platform === "ios",
       expandTop: Math.round(windowInfo.windowHeight * 0.2),
@@ -242,7 +263,6 @@ Page({
     }
 
     this.loadTodos();
-    this._measureTabs();
   },
 
   // 从垃圾桶返回：恢复/移到今天可能改变主列表，按需刷新（openTrash 时置标记）
@@ -267,47 +287,6 @@ Page({
     });
   },
 
-  // ========== Tab pill ==========
-
-  _measureTabs() {
-    setTimeout(() => {
-      const query = wx.createSelectorQuery();
-      query.selectAll(".tab").boundingClientRect();
-      query.select(".tabs").boundingClientRect();
-      query.exec((res) => {
-        const tabs = res[0];
-        const container = res[1];
-        if (!tabs || !container || tabs.length < 3) {
-          setTimeout(() => this._measureTabs(), 150);
-          return;
-        }
-        this._tabPositions = tabs.map((t) => t.left - container.left);
-        this._tabWidth = tabs[0].width;
-        this._tabsMeasured = true;
-
-        // Set initial pill position
-        const tabIndex = Object.keys(VIEW_META).indexOf(this.data.activeView);
-        this.setData({
-          pillX: this._tabPositions[tabIndex] || 0,
-          pillWidth: this._tabWidth,
-        });
-      });
-    }, 100);
-  },
-
-  _animatePill(tabIndex) {
-    if (!this._tabsMeasured || !this._tabPositions) return;
-    const targetX = this._tabPositions[tabIndex];
-    if (this._pillSpring) this._pillSpring.stop();
-    this._pillSpring = spring(targetX, {
-      damping: 0.8,
-      response: 0.3,
-      onUpdate: (value) => {
-        this.setData({ pillX: value });
-      },
-    });
-  },
-
   // ========== Data loading ==========
 
   async loadTodos() {
@@ -316,6 +295,8 @@ Page({
       const todos = await api.listTodos();
       this.setData({ todos, loading: false, todayDate: todos.today_date || "" });
       this.applyActiveView(this.data.activeView);
+      // 骨架屏数量缓存：按当前视图可见条数记录，下次加载时贴近真实长度
+      wx.setStorageSync(SKELETON_COUNT_KEY, this.data.items.length);
       this._syncTodayState();
       this._buildCalendar();
       if (this.data.selectedDate) {
@@ -390,16 +371,10 @@ Page({
     if (!this.data.organizeMode) {
       this._enterOrganize();
     } else {
-      // 已在 AI 视图：再次点击 = 手动重新整理（把未分组任务一并纳入）
-      this._requestOrganize();
+      // 两态切换：AI 视图 → 回到默认视图
+      this.setData({ organizeMode: false, organizeError: "" });
+      this._renderCurrentView();
     }
-  },
-
-  onOrganizeDefaultTap() {
-    if (this.data.organizing) return;
-    if (!this.data.organizeMode) return;
-    this.setData({ organizeMode: false, organizeError: "" });
-    this._renderCurrentView();
   },
 
   _enterOrganize() {
@@ -442,10 +417,12 @@ Page({
   // AI 分组视图渲染：组标题行 + 组内卡片；未分组任务（整理后新增）单独成区
   _renderOrganizeItems(patch) {
     const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
+    const today = this.data.todos && this.data.todos.today_date;
+    const tomorrow = this.data.todos && this.data.todos.tomorrow_date;
     const base = (groups.today || []).map((item) => ({
       ...item,
       pinned: Boolean(item.pinned),
-      meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+      meta: formatTodoMeta(item, today, tomorrow),
       checkScale: 1,
       deleting: false,
       key: item.id,
@@ -508,13 +485,43 @@ Page({
       (groups[view] || []).map((item) => ({
         ...item,
         pinned: Boolean(item.pinned),
-        meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+        meta: formatTodoMeta(item, todos && todos.today_date, todos && todos.tomorrow_date),
         checkScale: 1,
         deleting: false,
         key: item.id,
       }))
     );
     this.setData({ ...patch, items });
+  },
+
+  // ========== Tab row swipe ==========
+  // 在 tab 条上左右滑动切换视图（列表区保留卡片横滑，互不干扰）。
+  // 位移超阈值视为滑动；否则回退为普通点击（tab 按钮 bindtap 照常工作）。
+
+  onTabRowTouchStart(e) {
+    this._tabTouchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    this._tabSwipeDone = false;
+  },
+
+  onTabRowTouchMove(e) {
+    if (!this._tabTouchStart || this._tabSwipeDone) return;
+    const dx = e.touches[0].clientX - this._tabTouchStart.x;
+    const dy = e.touches[0].clientY - this._tabTouchStart.y;
+    // 水平位移 > 40px 且明显水平主导（横向 2 倍于纵向），触发切换
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 2) {
+      this._tabSwipeDone = true;
+      const order = Object.keys(VIEW_META);
+      const cur = order.indexOf(this.data.activeView);
+      const next = dx < 0 ? order[Math.min(cur + 1, order.length - 1)] : order[Math.max(cur - 1, 0)];
+      if (next !== this.data.activeView) {
+        this.switchView({ currentTarget: { dataset: { view: next } } });
+      }
+    }
+  },
+
+  onTabRowTouchEnd() {
+    this._tabTouchStart = null;
+    this._tabSwipeDone = false;
   },
 
   switchView(event) {
@@ -538,8 +545,6 @@ Page({
     this._collapseCalendar();
     this.setData({ selectedDate: "" });
     this.applyActiveView(view);
-    const tabIndex = Object.keys(VIEW_META).indexOf(view);
-    this._animatePill(tabIndex);
     this._syncUpcomingLabel();
   },
 
@@ -698,7 +703,6 @@ Page({
       this.setData({ selectedDate: "" });
       this._collapseCalendar();
       this.applyActiveView(view);
-      this._animatePill(Object.keys(VIEW_META).indexOf(view));
       this._syncUpcomingLabel();
       return;
     }
@@ -718,7 +722,7 @@ Page({
         .map((item) => ({
           ...item,
           pinned: Boolean(item.pinned),
-          meta: `${item.due_date}${item.due_time ? ` ${item.due_time}` : ""}`,
+          meta: formatTodoMeta(item, todos && todos.today_date, todos && todos.tomorrow_date),
           checkScale: 1,
           deleting: false,
           key: item.id,
@@ -739,6 +743,10 @@ Page({
   // 一键移到明天：乐观移组 → PATCH due_date → 失败按 ID 回滚到原分组原位置
   moveToTomorrow(event) {
     const id = Number(event.currentTarget.dataset.id);
+    this._moveToTomorrow(id);
+  },
+
+  _moveToTomorrow(id) {
     const todos = this.data.todos;
     if (!todos || !todos.groups) return;
     const tomorrow = todos.tomorrow_date;
@@ -895,10 +903,17 @@ Page({
     this.data.todos = { ...todos, groups };
   },
 
-  // ========== Item swipe (right=pin, left=delete) ==========
+  // ========== Item swipe (left reveals explicit action buttons) ==========
+
+  _swipeRevealWidth(item) {
+    const canMoveTomorrow =
+      item && item.status === "pending" && item.due_date === this.data.todayDate;
+    const actionCount = canMoveTomorrow ? 3 : 2;
+    return Math.round(actionCount * SWIPE_ACTION_RPX * (this._rpxToPx || 0.5));
+  },
 
   onItemTouchStart(event) {
-    const index = event.currentTarget.dataset.index;
+    const index = Number(event.currentTarget.dataset.index);
     this._closeOtherSwipes(index);
 
     if (this._swipeSpring) {
@@ -907,11 +922,13 @@ Page({
     }
 
     const touch = event.touches[0];
+    const item = this.data.items[index];
     this._swipeState = {
       index,
       startX: touch.clientX,
       startY: touch.clientY,
-      currentOffset: this.data.items[index].swipeX || 0,
+      currentOffset: item.swipeX || 0,
+      revealWidth: this._swipeRevealWidth(item),
       swiping: false,
     };
   },
@@ -932,9 +949,10 @@ Page({
     }
 
     let offset = s.currentOffset + dx;
-    // Hard clamp — don't overshoot the zone
-    if (offset > SWIPE_ZONE) offset = SWIPE_ZONE;
-    if (offset < -SWIPE_ZONE) offset = -SWIPE_ZONE;
+    // Only left swipe exposes actions. Rightward movement only closes an
+    // already-open card and never triggers a second gesture mode.
+    if (offset > 0) offset = 0;
+    if (offset < -s.revealWidth) offset = -s.revealWidth;
 
     this.setData({ [`items[${s.index}].swipeX`]: offset });
   },
@@ -950,25 +968,33 @@ Page({
       return;
     }
 
-    if (offset > SWIPE_THRESHOLD) {
-      // Right swipe → toggle pin
-      this._springTo(s.index, 0);
+    if (offset < -SWIPE_THRESHOLD) {
+      this._springTo(s.index, -s.revealWidth);
       this._swipeState = null;
-      const item = this.data.items[s.index];
-      this._doPin(item.id, item.pinned);
-    } else if (offset < -SWIPE_THRESHOLD) {
-      // Left swipe → delete confirm (wait for spring to finish)
-      var self = this;
-      var targetIndex = s.index;
-      var item = this.data.items[s.index];
-      this._swipeState = null;
-      this._springTo(targetIndex, 0, function() {
-        self._confirmSwipeDelete(item.id, targetIndex);
-      });
     } else {
       this._springTo(s.index, 0);
       this._swipeState = null;
     }
+  },
+
+  onSwipeMoveTomorrow(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const index = Number(event.currentTarget.dataset.index);
+    this._springTo(index, 0, () => this._moveToTomorrow(id));
+  },
+
+  onSwipePin(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const index = Number(event.currentTarget.dataset.index);
+    const item = this.findTodo(id);
+    if (!item) return;
+    this._springTo(index, 0, () => this._doPin(id, Boolean(item.pinned)));
+  },
+
+  onSwipeDelete(event) {
+    const id = Number(event.currentTarget.dataset.id);
+    const index = Number(event.currentTarget.dataset.index);
+    this._springTo(index, 0, () => this._confirmSwipeDelete(id, index));
   },
 
   _springTo(index, target, onComplete) {
@@ -1274,6 +1300,11 @@ Page({
 
   onEditUseTimeChange(event) {
     this.setData({ editUseTime: event.detail.value });
+  },
+
+  onEditTimeToggle() {
+    this.setData({ editUseTime: !this.data.editUseTime });
+    wx.vibrateShort({ type: "light" });
   },
 
   async submitEdit() {
@@ -1661,7 +1692,12 @@ Page({
       this.recorderStarted = false;
       this._voiceShouldProcess = false;
       this.setData({ recording: false, panelActive: false });
-      wx.showToast({ title: error.errMsg || "录音失败", icon: "none" });
+      const message = error && error.errMsg ? error.errMsg : "录音失败";
+      if (/auth|permission|authorize|denied|deny|权限/i.test(message)) {
+        this.showRecordPermission();
+      } else {
+        wx.showToast({ title: message, icon: "none" });
+      }
     });
   },
 
@@ -1680,7 +1716,7 @@ Page({
       await this.ensureRecordPermission();
     } catch (_error) {
       this._voicePermissionPending = false;
-      wx.showToast({ title: "请先授权麦克风", icon: "none" });
+      this.showRecordPermission();
       return;
     }
     // stopVoice may have fired during await — abort if cancelled
@@ -1708,8 +1744,41 @@ Page({
     } catch (error) {
       this.recorderStarted = false;
       this.setData({ recording: false });
-      wx.showToast({ title: error.errMsg || error.message || "录音启动失败", icon: "none" });
+      const message = error.errMsg || error.message || "录音启动失败";
+      if (/auth|permission|authorize|denied|deny|权限/i.test(message)) {
+        this.showRecordPermission();
+      } else {
+        wx.showToast({ title: message, icon: "none" });
+      }
     }
+  },
+
+  showRecordPermission() {
+    this.setData({
+      recordPermissionVisible: true,
+      recording: false,
+      voiceCancelHover: false,
+    });
+  },
+
+  closeRecordPermission() {
+    this.setData({ recordPermissionVisible: false });
+  },
+
+  openRecordSettings() {
+    wx.openSetting({
+      success: (settings) => {
+        if (settings.authSetting["scope.record"]) {
+          this.setData({ recordPermissionVisible: false });
+          wx.showToast({ title: "麦克风权限已开启", icon: "none" });
+          return;
+        }
+        wx.showToast({ title: "麦克风权限仍未开启", icon: "none" });
+      },
+      fail: () => {
+        wx.showToast({ title: "无法打开设置，请稍后重试", icon: "none" });
+      },
+    });
   },
 
   onVoiceButtonMove(event) {
@@ -1787,7 +1856,6 @@ Page({
 
   async onPanelSaved() {
     await this.loadTodos();
-    setTimeout(() => this._measureTabs(), 200);
   },
 
   onPanelRerecord() {
@@ -1799,7 +1867,7 @@ Page({
 
   _stopAllSprings() {
     const springs = [
-      this._pillSpring, this._sheetSpring, this._voiceSpring, this._maskSpring,
+      this._sheetSpring, this._voiceSpring, this._maskSpring,
       this._swipeSpring, this._calSpring,
     ];
     springs.forEach((s) => { if (s) s.stop(); });

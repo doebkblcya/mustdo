@@ -108,29 +108,45 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 原生框架。Bear Token 认证，`config.js` 配 API 地址和 `RECORD_MAX_DURATION=60000`。
 
 ### 滑动交互
-- **右滑**（80px 硬上限）：露出置顶区 → 松手超过 40px 阈值 → 乐观更新 + 本地 `_todoSort` 排序 + API 后台确认
-- **左滑**（80px 硬上限）：露出删除区 → 松手超过 40px → spring 弹回 → `wx.showModal` 确认 → 删除
+- **右滑**：露出置顶区 → 松手超过阈值 → 乐观更新 + 本地 `_todoSort` 排序 + API 后台确认
+- **左滑**：露出删除区 → 松手超过阈值 → spring 弹回 → `wx.showModal` 确认 → 删除
+- **露出宽度动态计算**：`_swipeRevealWidth(item)` 按卡片实际按钮数定宽（不再用固定 80px）
 - **编辑按钮**：始终可见，不参与滑动
 - Spring 引擎：自定义物理引擎在 `api.js` 中
 
+### 页面切换
+- **tab 条横滑**：`tab-row` 上左右滑切换 今天/明天/后续（水平位移 >40px 且 ≥ 纵向 2 倍触发），列表区保留卡片横滑，互不干扰
+- **骨架屏动态数量**：`SKELETON_COUNT_KEY` 缓存上次真实条数，无缓存时按视口撑满首屏（`skeletonItems` 索引数组，宽度错开类 `--title-{{index % 4}}` 回绕）
+
 ### 卡片状态
-- **done**：只有 `.todo-content { opacity: 0.5 }` + 文字划线，卡片背景不透明（防滑动区透出）
-- **pinned**：暖白底 `#fffaf3` + 左侧 6rpx 橙色 accent（`::before`）
+- **done**：整卡 `opacity: 0.6`（`.todo-item.done`），标题划线变灰（`.todo-title`），勾选圈变实心黑
+- **pinned**：白色胶囊卡 + 4rpx 黑色粗边框（`.todo-item.pinned`，`border: 4rpx solid #1d1d1f`），无背景色/accent 条
+
+### AI 整理
+- **入口**：头部「AI 整理」按钮两态切换（进 AI 视图 ⇄ 回默认视图），无旧版分段切换条
+- **缓存**：`ORGANIZE_CACHE_KEY` 存 `{fingerprint, groups}`，任务集合未变时直接复用，不发请求
+- 手动「重新整理」入口已随旧切换条删除（数据变化时退出重进会自动刷新）
 
 ### 日历交互（后续 tab 展开月历）
 - **入口 = 文案状态机，无图标**：「后续 / 展开日历 / 收起日历 / 8月20日 / 查看全部」永远显示下一步动作
   - 今天/明天激活 → 「后续」；点它切到后续视图
   - 后续未选中：收起=「展开日历」，展开=「收起日历」，再点收起
   - 选中普通未来日期 → 日历收起、tab 显示「8月20日」；再点 tab 展开并变「查看全部」，点它清空筛选并收起
-- **展开**：二次点击后续 tab；日历 `absolute` 覆盖在列表上方（`tab-section` 相对定位 + `top:100%`），不挤压列表；spring 高度折叠动画
+- **展开**：二次点击后续 tab；日历在文档流中展开（`.calendar-wrap` `position: relative`），不遮挡任务列表
 - **网格**：6×7，周一起始，默认当前月，左右箭头翻月；今天之前（含翻到过去月份）置灰不可点；今天无特殊标记
 - **圆点**：仅该日有未完成（pending）待办，`_collectDotDates()` 聚合 today/tomorrow/upcoming 三个分组的 `due_date`，跨月计算，`#1d1d1f`
-- **选中**：仅加粗高亮（无背景）；选中今天/明天 → 跳对应 tab 并清空选中；选中其他日期 → 列表过滤为该日、tab 显示日期
+- **选中**：加粗高亮（无背景）；选中今天/明天 → 跳对应 tab 并清空选中；选中其他日期 → 列表过滤为该日、tab 显示日期
 - **关键约定**：`_expandCalendar()` 先 `_buildCalendar()` 重建网格再显示（选中标记/圆点跟随最新状态，防脏高亮）；标签在展开时立即同步、收起动画完成后同步（`_syncUpcomingLabel`）
 - 数据全部来自 `GET /api/todos` 分组，后端零改动
 
+### 图标资源
+- 引用 `assets/icons/png/*.png`（96×96 透明 PNG，由 `assets/icons/material/*.svg` 经 `rsvg-convert -w 96 -h 96` 导出）
+- 原因：微信小程序 `<image>` 组件对本地 SVG 的 iOS 渲染兼容性不可靠，PNG 三端稳定；SVG 保留为原始资源
+- 白色/红色等颜色状态用独立文件表达（`check_white`/`refresh_white`/`delete_error`/`error_red`），不依赖 CSS 染色
+- **坑**：`project.private.config.json` 的 `ignoreDevUnusedFiles` 开启时会裁剪「未识别为已引用」的新增资源，导致真机包里缺文件（表现为 getImageInfo fail image not found）；新增资源目录后重启开发者工具 + 手动编译
+
 ### 关键约定
-- 乐观更新后用本地排序不用 `loadTodos`（即时响应，无骨架屏）
+- 乐观更新后用本地排序不用 `loadTodos`（即时响应）
 - 回滚用 `id` 定位不用 `index`（排序后 index 会变）
 - 用 `bindtouch*` 不用 `catchtouch*`（避免拦截子元素 tap）
 - Swipe `setData` 路径：`items[X].swipeX`，读 `this.data.items[index].swipeX`

@@ -33,6 +33,10 @@ Page({
   _reqSeq: 0,
 
   data: {
+    statusBarHeight: 0,
+    headerRightOffset: 12,
+    navTop: 24,
+    navHeight: 32,
     activeTab: "deleted",
     deletedCount: 0,
     overdueCount: 0,
@@ -56,7 +60,15 @@ Page({
       wx.redirectTo({ url: "/pages/auth/auth" });
       return;
     }
-    this.setData({ todayDate: todayStr() });
+    var windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    var menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+    this.setData({
+      statusBarHeight: windowInfo.statusBarHeight || 0,
+      headerRightOffset: menuButton ? windowInfo.windowWidth - menuButton.left + 4 : 12,
+      navTop: menuButton ? menuButton.top : (windowInfo.statusBarHeight || 0),
+      navHeight: menuButton ? menuButton.height : 32,
+      todayDate: todayStr(),
+    });
     this.loadList();
   },
 

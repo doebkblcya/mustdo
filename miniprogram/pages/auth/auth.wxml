@@ -1,42 +1,55 @@
-<view class="auth-page">
-  <!-- Hero -->
-  <view class="auth-hero">
-    <text class="auth-wordmark">mustdo</text>
-  </view>
-
-  <!-- Launching -->
-  <view class="auth-launch" wx:if="{{phase === 'launching'}}">
-    <view class="auth-spinner"></view>
-    <text class="auth-launch-text">正在登录…</text>
-  </view>
-
-  <!-- Invite gate -->
-  <view class="auth-form" wx:elif="{{phase === 'invite'}}">
-    <text class="auth-invite-title">填写邀请码继续使用</text>
-    <view class="auth-field">
-      <view class="auth-field-icon auth-field-icon--invite"></view>
-      <input
-        class="auth-input"
-        value="{{inviteCode}}"
-        placeholder="邀请码"
-        placeholder-class="auth-placeholder"
-        bindinput="onInviteInput"
-      />
+<view class="auth-page auth-page--{{phase}}">
+  <!-- 启动登录 -->
+  <view wx:if="{{phase === 'launching'}}" class="auth-state auth-launching">
+    <text class="auth-launch-wordmark">mustdo</text>
+    <view class="auth-launch-status">
+      <image class="auth-spinner" src="/assets/icons/png/progress_activity.png" mode="aspectFit" />
+      <text class="auth-launch-text">正在登录…</text>
     </view>
-    <text class="auth-error" wx:if="{{error}}">{{error}}</text>
-    <button
-      class="auth-submit"
-      bindtap="submitInvite"
-      loading="{{submitting}}"
-      disabled="{{submitting}}"
-    >
-      确认并进入
-    </button>
   </view>
 
-  <!-- Failed -->
-  <view class="auth-launch" wx:else>
-    <text class="auth-error auth-error--center">{{error}}</text>
+  <!-- 邀请码 -->
+  <block wx:elif="{{phase === 'invite'}}">
+    <view class="auth-invite" style="padding-top: {{inviteTop}}px;">
+      <view class="auth-copy">
+        <view class="auth-title">
+          <text>填写邀请码</text>
+          <text>继续使用</text>
+        </view>
+        <text class="auth-description">为保证服务质量，当前仅限受邀用户使用。</text>
+      </view>
+
+      <view class="auth-form">
+        <input
+          class="auth-input"
+          value="{{inviteCode}}"
+          placeholder="邀请码"
+          placeholder-class="auth-placeholder"
+          confirm-type="done"
+          maxlength="64"
+          bindinput="onInviteInput"
+          bindconfirm="submitInvite"
+        />
+        <view class="auth-error-row {{error ? 'auth-error-row--visible' : ''}}">
+          <image class="auth-error-icon" src="/assets/icons/png/error_fill.png" mode="aspectFit" />
+          <text class="auth-error">{{error || '请输入有效的邀请码'}}</text>
+        </view>
+      </view>
+
+      <button
+        class="auth-submit"
+        bindtap="submitInvite"
+        loading="{{submitting}}"
+        disabled="{{submitting}}"
+      >
+        确认并进入
+      </button>
+    </view>
+  </block>
+
+  <!-- 登录失败 -->
+  <view wx:else class="auth-state auth-failed">
+    <text class="auth-failed-text">{{error || '微信登录失败，请重试'}}</text>
     <button class="auth-retry" bindtap="retryLogin">重新登录</button>
   </view>
 </view>

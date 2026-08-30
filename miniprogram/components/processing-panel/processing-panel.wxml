@@ -1,25 +1,28 @@
 <view wx:if="{{visible}}" class="processing-mask" catchtouchmove="noop" bindtap="onPanelTap">
   <scroll-view class="processing-panel" scroll-y="{{true}}" catchtap="onPanelTap" bindtouchstart="onPanelTap">
-    <view class="panel-header">
-      <view>
-        <text class="panel-eyebrow">{{panel.source === 'voice' ? '语音添加' : '文字添加'}}</text>
-        <text class="panel-title">
-          {{panel.phase === 'reviewing' ? '确认待办' : (panel.phase === 'done' ? '处理完成' : (panel.phase === 'error' ? '处理遇到问题' : '正在处理'))}}
-        </text>
-      </view>
-      <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">×</button>
+    <view wx:if="{{panel.phase === 'reviewing' || panel.phase === 'done' || panel.phase === 'error'}}" class="panel-header">
+      <text class="panel-title">
+        {{panel.phase === 'reviewing' ? '确认待办' : (panel.phase === 'done' ? '处理完成' : '处理遇到问题')}}
+      </text>
+      <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">
+        <image class="panel-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
+      </button>
     </view>
 
-    <view class="step-list">
+    <view wx:if="{{panel.phase !== 'reviewing' && panel.phase !== 'done' && panel.phase !== 'error'}}" class="step-list">
       <view wx:for="{{steps}}" wx:key="key" class="step-row step-row--{{item.state}}">
-        <view class="step-marker">
-          <text wx:if="{{item.state === 'complete'}}">✓</text>
-          <text wx:elif="{{item.state === 'error'}}">!</text>
-          <view wx:elif="{{item.state === 'active'}}" class="step-spinner"></view>
+        <view class="step-rail">
+          <view class="step-marker">
+            <image wx:if="{{item.state === 'complete'}}" class="step-state-icon" src="/assets/icons/png/check_white.png" mode="aspectFit" />
+            <image wx:elif="{{item.state === 'error'}}" class="step-state-icon step-state-icon--error" src="/assets/icons/png/error_red.png" mode="aspectFit" />
+            <image wx:elif="{{item.state === 'active'}}" class="step-spinner" src="/assets/icons/png/progress_activity.png" mode="aspectFit" />
+          </view>
+          <view wx:if="{{index < steps.length - 1}}" class="step-line"></view>
         </view>
         <view class="step-copy">
           <text class="step-label">{{item.label}}</text>
-          <text wx:if="{{item.summary}}" class="step-summary">{{item.summary}}</text>
+          <text wx:if="{{item.summary}}" class="step-summary">“{{item.summary}}”</text>
+          <text wx:elif="{{item.state === 'active' && item.key === 'parsing'}}" class="step-summary">正在提取待办事项和时间信息</text>
         </view>
       </view>
     </view>
@@ -28,7 +31,10 @@
       <view class="review-block">
         <view class="review-heading-row">
           <text class="review-heading">原文</text>
-          <button class="text-action" bindtap="reparse">重新解析</button>
+          <button class="text-action" bindtap="reparse">
+            <image class="refresh-icon" src="/assets/icons/png/refresh.png" mode="aspectFit" />
+            <text>重新解析</text>
+          </button>
         </view>
         <textarea
           class="transcript-editor"
@@ -67,6 +73,7 @@
           </view>
         </view>
       </scroll-view>
+
       <view wx:else class="review-empty">
         <text>{{panel.message || '没有识别到需要新增的待办'}}</text>
         <text class="review-empty-hint">可以修改原文后重新解析</text>
@@ -78,7 +85,9 @@
     </view>
 
     <view wx:elif="{{panel.phase === 'done'}}" class="result-section">
-      <view class="result-symbol">✓</view>
+      <view class="result-symbol">
+        <image class="result-symbol-icon" src="/assets/icons/png/check_white.png" mode="aspectFit" />
+      </view>
       <text class="result-title">{{panel.created.length ? '已添加 ' + panel.created.length + ' 项' : panel.message}}</text>
       <scroll-view wx:if="{{panel.created.length}}" class="created-list {{panel.created.length > 4 ? 'created-list--scroll' : ''}}" scroll-y="{{panel.created.length > 4}}">
         <view wx:for="{{panel.created}}" wx:key="id" class="created-item">
@@ -90,7 +99,7 @@
     </view>
 
     <view wx:elif="{{panel.phase === 'error'}}" class="error-section">
-      <view class="error-symbol">!</view>
+      <image class="error-symbol" src="/assets/icons/png/error_red.png" mode="aspectFit" />
       <text class="error-message">{{panel.message}}</text>
       <view wx:if="{{panel.transcript}}" class="preserved-copy">
         <text class="preserved-label">已保留原文</text>
@@ -103,18 +112,6 @@
       <view class="error-actions">
         <button class="primary-action error-primary" bindtap="retry">{{rerecordOnly ? '重新录音' : '重试'}}</button>
         <button wx:if="{{panel.source === 'voice' && !rerecordOnly}}" class="secondary-action" bindtap="rerecord">重新录音</button>
-      </view>
-    </view>
-
-    <view wx:elif="{{panel.phase === 'parsing' && panel.transcript}}" class="live-detail">
-      <text class="live-label">识别原文</text>
-      <text class="live-transcript">{{panel.transcript}}</text>
-    </view>
-
-    <view wx:elif="{{panel.phase === 'saving' && panel.items.length}}" class="live-detail">
-      <text class="live-label">正在保存 {{panel.items.length}} 项</text>
-      <view class="saving-preview">
-        <text wx:for="{{panel.items}}" wx:key="_key" class="saving-item">{{item.content}}</text>
       </view>
     </view>
   </scroll-view>

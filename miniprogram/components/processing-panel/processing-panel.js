@@ -92,29 +92,29 @@ Component({
     },
 
     _buildSteps(panel) {
-      const defs = panel.source === "voice"
-        ? [
-            { key: "uploading", label: "上传录音" },
-            { key: "transcribing", label: "识别文字" },
-            { key: "parsing", label: "解析待办" },
-            { key: "saving", label: "保存" },
-          ]
-        : [
-            { key: "parsing", label: "解析待办" },
-            { key: "saving", label: "保存" },
-          ];
-      const order = defs.map((item) => item.key);
-      let current = order.indexOf(panel.phase);
-      if (panel.phase === "reviewing") current = order.indexOf("saving");
-      if (panel.phase === "done") current = order.length;
-      if (panel.phase === "error") current = order.indexOf(panel.errorStep);
+      const defs = [
+        { key: "source", label: panel.source === "voice" ? "语音识别" : "文字输入" },
+        { key: "parsing", label: "AI 解析" },
+        { key: "saving", label: "保存待办" },
+      ];
+      let currentKey = panel.phase;
+      if (panel.phase === "uploading" || panel.phase === "transcribing") currentKey = "source";
+      if (panel.phase === "reviewing") currentKey = "saving";
+      if (panel.phase === "error") {
+        currentKey = panel.errorStep === "uploading" || panel.errorStep === "transcribing"
+          ? "source"
+          : panel.errorStep;
+      }
+      const current = defs.findIndex((item) => item.key === currentKey);
       return defs.map((item, index) => {
         let state = "pending";
-        if (index < current) state = "complete";
-        if (index === current) state = panel.phase === "error" ? "error" : "active";
+        if (panel.phase === "done") state = "complete";
+        else if (index < current) state = "complete";
+        else if (index === current) state = panel.phase === "error" ? "error" : "active";
+        if (panel.source === "text" && item.key === "source") state = "complete";
         if (panel.phase === "reviewing" && item.key === "saving") state = "pending";
         let summary = "";
-        if (item.key === "transcribing" && panel.transcript) summary = panel.transcript;
+        if (item.key === "source" && panel.transcript) summary = panel.transcript;
         if (item.key === "parsing" && panel.items.length) summary = panel.items.length + " 项";
         if (item.key === "saving" && panel.created.length) summary = panel.created.length + " 项";
         return { ...item, state, summary };

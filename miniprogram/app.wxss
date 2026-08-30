@@ -2,7 +2,7 @@
  * mustdo — Apple Design System · Light Mode
  *
  * Depth hierarchy (light → dark):
- *   bg           #f2f2f7    page background (iOS system)
+ *   bg           #f9f9f9    page background
  *   surface      #ffffff    cards, panels — level 1
  *   surface-2    #f5f5f7    inset / grouped — level 0
  *   border       #e5e5ea    separators, hairline
@@ -42,7 +42,7 @@
 
 page {
   min-height: 100vh;
-  background: #f2f2f7;
+  background: #f9f9f9;
   color: #1d1d1f;
   font-family: "SF Pro Display", "Inter", -apple-system, "Helvetica Neue", "PingFang SC", sans-serif;
   font-size: 30rpx;
@@ -276,8 +276,4 @@ input {
 page.reduced-motion .skeleton-line {
   animation: none;
   opacity: 0.45;
-}
-
-page.reduced-motion .tab-pill {
-  transition: transform 0.15s ease !important;
 }
