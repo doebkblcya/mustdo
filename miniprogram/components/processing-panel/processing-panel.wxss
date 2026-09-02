@@ -232,13 +232,11 @@
   margin-bottom: 20rpx;
 }
 
-.review-list--scroll,
-.created-list--scroll {
+.review-list--scroll {
   max-height: 480rpx;
 }
 
-.review-item,
-.created-item {
+.review-item {
   margin-bottom: 20rpx;
   padding: 24rpx 36rpx;
   border-radius: 48rpx;
@@ -365,27 +363,9 @@
   text-align: center;
 }
 
-.created-list {
-  width: 100%;
-  margin-top: 24rpx;
-}
-
-.created-content,
-.created-meta,
 .preserved-text,
 .preserved-item {
   display: block;
-}
-
-.created-content {
-  color: #000000;
-  font-size: 28rpx;
-}
-
-.created-meta {
-  margin-top: 6rpx;
-  color: #5d5e63;
-  font-size: 22rpx;
 }
 
 .preserved-copy {

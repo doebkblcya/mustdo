@@ -121,6 +121,7 @@ Page({
     items: [],
     todos: null,
     loading: false,
+    refreshing: false, // scroll-view refresher 下拉刷新指示
     skeletonItems: [0, 1, 2, 3], // 骨架屏卡片索引数组：onLoad 按视口/上次条数动态生成
     error: "",
     showCompleted: true, // hide/show completed items — read from storage in onLoad
@@ -281,9 +282,11 @@ Page({
     this._stopAllSprings();
   },
 
-  onPullDownRefresh() {
+  onScrollRefresh() {
+    // scroll-view refresher 下拉刷新（页面级 enablePullDownRefresh 已关闭）
+    this.setData({ refreshing: true });
     this.loadTodos().finally(() => {
-      wx.stopPullDownRefresh();
+      this.setData({ refreshing: false });
     });
   },
 
@@ -415,22 +418,26 @@ Page({
   },
 
   // AI 分组视图渲染：组标题行 + 组内卡片；未分组任务（整理后新增）单独成区
+  // 只取今天「未完成」任务：已完成不进入 AI 视图（不受 showCompleted 开关影响）
   _renderOrganizeItems(patch) {
     const groups = this.data.todos && this.data.todos.groups ? this.data.todos.groups : {};
     const today = this.data.todos && this.data.todos.today_date;
     const tomorrow = this.data.todos && this.data.todos.tomorrow_date;
-    const base = (groups.today || []).map((item) => ({
-      ...item,
-      pinned: Boolean(item.pinned),
-      meta: formatTodoMeta(item, today, tomorrow),
-      checkScale: 1,
-      deleting: false,
-      key: item.id,
-    }));
-    const visible = this._filterVisible(base);
+    const base = (groups.today || [])
+      .filter((item) => item.status === "pending")
+      .map((item) => ({
+        ...item,
+        pinned: Boolean(item.pinned),
+        meta: formatTodoMeta(item, today, tomorrow),
+        checkScale: 1,
+        deleting: false,
+        key: item.id,
+      }));
+    const visible = base;
     if (!visible.length) {
-      // 组内全部清空（含隐藏偏好）→ 自动回到默认视图
+      // 视图中没有未完成任务（全完成/外部改动）→ 退出 AI 视图并渲染默认列表
       this.setData({ ...(patch || {}), organizeMode: false, organizeGroups: [], items: [] });
+      this._renderCurrentView();
       return;
     }
     const org = this.data.organizeGroups || [];
@@ -477,6 +484,12 @@ Page({
       viewTitle: VIEW_META[view],
       viewDate: date || "",
     };
+    // AI 分组视图只属于「今天」视图：离开今天（切 tab / 日历跳日期）即退出，
+    // 切回今天时显示普通列表，再点「AI 整理」重进（缓存命中时瞬时无感）
+    if (view !== "today" && this.data.organizeMode) {
+      patch.organizeMode = false;
+      patch.organizeError = "";
+    }
     if (this.data.organizeMode && view === "today") {
       this._renderOrganizeItems(patch);
       return;
@@ -584,6 +597,7 @@ Page({
         const target = (rect && rect.height) || 320;
         if (self._calSpring) self._calSpring.stop();
         self._calSpring = spring(target, {
+          initialValue: self.data.calHeight || 0,
           damping: 0.8,
           response: 0.32,
           onUpdate: function(value) {
@@ -599,6 +613,7 @@ Page({
     if (this._calSpring) this._calSpring.stop();
     var self = this;
     this._calSpring = spring(0, {
+      initialValue: this.data.calHeight || 0,
       damping: 0.9,
       response: 0.26,
       onUpdate: function(value) {
@@ -826,19 +841,20 @@ Page({
 
     try {
       await api.updateTodo(id, { status: newStatus });
-      // Hidden-completed mode: let the check bounce finish, then drop the item
-      if (newStatus === "done" && !this.data.showCompleted) {
+      // AI 视图只看未完成：完成项让勾选动画播完（380ms）后移出视图；
+      // 普通视图仅在隐藏已完成模式下移除（勾选动画先播完）
+      if (newStatus === "done" && (this.data.organizeMode || !this.data.showCompleted)) {
         setTimeout(() => {
+          if (this.data.organizeMode) {
+            // Rebuild the organize view (drops done items, empty headers, recomputes 未分组)
+            this._renderOrganizeItems();
+            return;
+          }
           // Skip if the preference was switched back to showing in the meantime
           if (this.data.showCompleted) return;
           const item = this.data.items.find((i) => i.id === id);
           if (item && item.status === "done") {
-            if (this.data.organizeMode) {
-              // Rebuild the organize view (drops empty group headers, recomputes 未分组)
-              this._renderOrganizeItems();
-            } else {
-              this.setData({ items: this.data.items.filter((i) => i.id !== id) });
-            }
+            this.setData({ items: this.data.items.filter((i) => i.id !== id) });
           }
         }, 380);
       }
@@ -857,6 +873,7 @@ Page({
     if (newStatus === "done") {
       // Done: bounce the check circle (momentum feel)
       this._checkSprings[key] = spring(1, {
+        initialValue: 0.72,
         damping: 0.7,
         response: 0.25,
         onUpdate: (value) => {
@@ -866,6 +883,7 @@ Page({
     } else {
       // Uncheck: quick settle back
       this._checkSprings[key] = spring(1, {
+        initialValue: 1.12,
         damping: 0.9,
         response: 0.2,
         onUpdate: (value) => {
@@ -977,6 +995,13 @@ Page({
     }
   },
 
+  onItemTouchCancel() {
+    if (!this._swipeState) return;
+    const index = this._swipeState.index;
+    this._swipeState = null;
+    this._springTo(index, 0);
+  },
+
   onSwipeMoveTomorrow(event) {
     const id = Number(event.currentTarget.dataset.id);
     const index = Number(event.currentTarget.dataset.index);
@@ -1000,7 +1025,10 @@ Page({
   _springTo(index, target, onComplete) {
     if (this._swipeSpring) this._swipeSpring.stop();
     var self = this;
+    var item = this.data.items[index];
+    var initialValue = item && item.swipeX ? item.swipeX : 0;
     this._swipeSpring = spring(target, {
+      initialValue: initialValue,
       damping: 0.75,
       response: 0.28,
       onUpdate: function(value) {
@@ -1087,25 +1115,48 @@ Page({
     });
   },
 
-  _doDelete(id, index) {
+  async _doDelete(id, index) {
+    const item = this.data.items[index];
+    if (!item || item.id !== id || item.deletePending) return;
+
     var self = this;
-    this.setData({ [`items[${index}].deleting`]: true });
-    setTimeout(function() {
-      var prevItems = self.data.items;
-      var prevTodos = self.data.todos;
-      self.setData({
-        items: prevItems.filter(function(item) { return item.id !== id; }),
-        todos: self.removeFromGroups(prevTodos, id),
+    this.setData({ [`items[${index}].deletePending`]: true });
+
+    try {
+      await api.deleteTodo(id);
+      const currentIndex = this.data.items.findIndex(function(current) {
+        return current.id === id;
       });
-      self._buildCalendar(); // dot marks refresh after removal
-      self._syncTodayState(); // entry visibility + auto-leave organize when empty
-      // 组织视图：重建 AI 分组，空组标题自动消失
-      if (self.data.organizeMode) self._renderOrganizeItems();
+      if (currentIndex === -1) {
+        this.setData({ todos: this.removeFromGroups(this.data.todos, id) });
+        this._buildCalendar();
+        this._syncTodayState();
+        return;
+      }
+
+      this.setData({ [`items[${currentIndex}].deleting`]: true });
       wx.vibrateShort({ type: 'medium' });
-      api.deleteTodo(id).catch(function() {
-        // Already removed from UI
+      setTimeout(function() {
+        var prevItems = self.data.items;
+        var prevTodos = self.data.todos;
+        self.setData({
+          items: prevItems.filter(function(current) { return current.id !== id; }),
+          todos: self.removeFromGroups(prevTodos, id),
+        });
+        self._buildCalendar(); // dot marks refresh after removal
+        self._syncTodayState(); // entry visibility + auto-leave organize when empty
+        // 组织视图：重建 AI 分组，空组标题自动消失
+        if (self.data.organizeMode) self._renderOrganizeItems();
+      }, 220);
+    } catch (error) {
+      const currentIndex = this.data.items.findIndex(function(current) {
+        return current.id === id;
       });
-    }, 220);
+      if (currentIndex !== -1) {
+        this.setData({ [`items[${currentIndex}].deletePending`]: false });
+      }
+      wx.showToast({ title: error.message || "删除失败", icon: "none" });
+    }
   },
 
   // ========== Edit sheet ==========
@@ -1164,6 +1215,7 @@ Page({
     if (this._sheetSpring) this._sheetSpring.stop();
 
     this._sheetSpring = spring(0, {
+      initialValue: startY,
       damping: 0.8,
       response: 0.3,
       onUpdate: (value) => {
@@ -1194,6 +1246,7 @@ Page({
     if (this._sheetSpring) this._sheetSpring.stop();
 
     this._sheetSpring = spring(targetY, {
+      initialValue: currentY,
       damping: 1.0,
       response: 0.25,
       initialVelocity: initialVelocity || 0,
@@ -1268,6 +1321,7 @@ Page({
     } else {
       // Snap back
       this._sheetSpring = spring(0, {
+        initialValue: currentY,
         damping: 0.8,
         response: 0.3,
         initialVelocity: velocity,

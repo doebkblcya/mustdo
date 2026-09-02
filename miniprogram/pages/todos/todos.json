@@ -1,6 +1,6 @@
 {
   "navigationStyle": "custom",
-  "enablePullDownRefresh": true,
+  "enablePullDownRefresh": false,
   "backgroundTextStyle": "dark",
   "usingComponents": {
     "processing-panel": "/components/processing-panel/processing-panel"

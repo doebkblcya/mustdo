@@ -77,6 +77,15 @@
     </view>
     </view>
 
+  <scroll-view
+    class="todo-scroll"
+    scroll-y="{{true}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onScrollRefresh"
+    enhanced="{{true}}"
+    show-scrollbar="{{false}}"
+  >
   <view class="todo-list">
     <!-- Loading skeleton mirrors the final pill-card geometry. -->
     <view wx:if="{{loading}}" class="skeleton-list" aria-label="正在加载待办">
@@ -122,7 +131,7 @@
         <!-- AI organize: group title row -->
         <view wx:if="{{item.__header}}" class="organize-group-title">{{item.name}}</view>
         <!-- Regular todo card -->
-        <view wx:else class="todo-swipe-wrapper {{item.deleting ? 'deleting' : ''}}">
+        <view wx:else class="todo-swipe-wrapper {{item.deletePending ? 'delete-pending' : ''}} {{item.deleting ? 'deleting' : ''}}">
           <view class="swipe-actions">
             <button
               wx:if="{{item.status === 'pending' && item.due_date === todayDate}}"
@@ -160,6 +169,7 @@
             bindtouchstart="onItemTouchStart"
             bindtouchmove="onItemTouchMove"
             bindtouchend="onItemTouchEnd"
+            bindtouchcancel="onItemTouchCancel"
           >
             <button
               class="check-button"
@@ -196,6 +206,7 @@
       </view>
     </block>
   </view>
+  </scroll-view>
   </view>
 
   <processing-panel
@@ -331,7 +342,6 @@
     wx:if="{{editVisible}}"
     class="sheet-mask"
     style="opacity: {{maskOpacity}};"
-    catchtouchmove="noop"
     bindtap="onMaskTap"
   >
     <view
@@ -357,6 +367,13 @@
         </button>
       </view>
 
+      <scroll-view
+        class="sheet-scroll"
+        scroll-y="{{true}}"
+        enhanced="{{true}}"
+        show-scrollbar="{{false}}"
+      >
+        <view class="sheet-scroll-content">
       <block wx:if="{{sheetMode === 'edit'}}">
         <view class="sheet-section">
           <text class="sheet-section-label">待办内容</text>
@@ -424,7 +441,6 @@
           </view>
         </view>
 
-        <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存修改</button>
       </block>
 
       <block wx:else>
@@ -478,9 +494,29 @@
           </picker>
         </view>
 
-        <button wx:if="{{remindHasActive}}" class="remind-cancel" bindtap="cancelReminderFlow">取消当前提醒</button>
-        <button class="primary-button save-button" loading="{{remindSubmitting}}" bindtap="submitReminder">确认提醒</button>
       </block>
+        </view>
+      </scroll-view>
+
+      <view class="sheet-footer">
+        <button
+          wx:if="{{sheetMode === 'reminder' && remindHasActive}}"
+          class="remind-cancel"
+          bindtap="cancelReminderFlow"
+        >取消当前提醒</button>
+        <button
+          wx:if="{{sheetMode === 'edit'}}"
+          class="primary-button save-button"
+          loading="{{editSubmitting}}"
+          bindtap="submitEdit"
+        >保存修改</button>
+        <button
+          wx:else
+          class="primary-button save-button"
+          loading="{{remindSubmitting}}"
+          bindtap="submitReminder"
+        >确认提醒</button>
+      </view>
     </view>
   </view>
 </view>

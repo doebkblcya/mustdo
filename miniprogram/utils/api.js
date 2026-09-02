@@ -276,6 +276,7 @@ function spring(target, options) {
   var opts = options || {};
   var damping = opts.damping != null ? opts.damping : 1.0;
   var response = opts.response != null ? opts.response : 0.4;
+  var initialValue = opts.initialValue != null ? opts.initialValue : target;
   var initialVelocity = opts.initialVelocity || 0;
   var onUpdate = opts.onUpdate || null;
   var onComplete = opts.onComplete || null;
@@ -287,7 +288,7 @@ function spring(target, options) {
   var stiffness = omegaN * omegaN;
   var dampingC = 2 * zeta * omegaN;
 
-  var value = target;
+  var value = initialValue;
   var velocity = initialVelocity;
   var dest = target;
   var timer = null;

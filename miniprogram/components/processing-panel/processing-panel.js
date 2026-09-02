@@ -201,7 +201,8 @@ Component({
         wx.vibrateShort({ type: "light" });
         this.triggerEvent("saved", { items: created });
       }
-      this._doneTimer = setTimeout(() => this._closeNow(), 2200);
+      // 轻量通知型完成态：1.4s 足够看清「已添加 N 项」，随后自动关闭回列表
+      this._doneTimer = setTimeout(() => this._closeNow(), 1400);
     },
 
     _setError(step, message, rerecordOnly) {

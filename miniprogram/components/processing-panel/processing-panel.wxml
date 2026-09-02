@@ -89,13 +89,6 @@
         <image class="result-symbol-icon" src="/assets/icons/png/check_white.png" mode="aspectFit" />
       </view>
       <text class="result-title">{{panel.created.length ? '已添加 ' + panel.created.length + ' 项' : panel.message}}</text>
-      <scroll-view wx:if="{{panel.created.length}}" class="created-list {{panel.created.length > 4 ? 'created-list--scroll' : ''}}" scroll-y="{{panel.created.length > 4}}">
-        <view wx:for="{{panel.created}}" wx:key="id" class="created-item">
-          <text class="created-content">{{item.content}}</text>
-          <text class="created-meta">{{item.due_date}}{{item.due_time ? ' · ' + item.due_time : ''}}</text>
-        </view>
-      </scroll-view>
-      <button class="secondary-action" bindtap="requestClose">关闭</button>
     </view>
 
     <view wx:elif="{{panel.phase === 'error'}}" class="error-section">
