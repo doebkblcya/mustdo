@@ -72,6 +72,15 @@
   padding: 8rpx 8rpx 0;
 }
 
+/* 最后一行不再被 min-height 撑高、文字下方不留内边距 —— 让卡片上下留白对称 */
+.step-row:last-child {
+  min-height: 0;
+}
+
+.step-row:last-child .step-copy {
+  padding-bottom: 0;
+}
+
 .step-row {
   display: flex;
   align-items: stretch;
@@ -177,6 +186,40 @@
   -webkit-line-clamp: 2;
 }
 
+/* AI 解析完成后：解析出的待办条目（只读），收尾停留期间持续可见 */
+.step-parsed {
+  margin-top: 12rpx;
+}
+
+.step-parsed-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 10rpx;
+  padding: 14rpx 26rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.step-parsed-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #1a1c1c;
+  font-size: 27rpx;
+  line-height: 38rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-parsed-meta {
+  flex-shrink: 0;
+  color: #5d5e63;
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+
 .review-block {
   padding-top: 4rpx;
 }
@@ -186,7 +229,6 @@
 }
 
 .review-heading,
-.review-count,
 .review-empty-hint,
 .preserved-label {
   color: #5d5e63;
@@ -328,32 +370,12 @@
   color: #000000;
 }
 
-.result-section,
 .error-section {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.result-symbol,
-.error-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #000000;
-  color: #ffffff;
-  font-size: 36rpx;
-  font-weight: 700;
-}
-
-.error-symbol {
-  background: #ba1a1a;
-}
-
-.result-title,
 .error-message {
   margin-top: 20rpx;
   color: #000000;
@@ -432,12 +454,6 @@
   width: 30rpx;
   height: 30rpx;
   opacity: 0.68;
-}
-
-.result-symbol-icon {
-  display: block;
-  width: 44rpx;
-  height: 44rpx;
 }
 
 .error-symbol {

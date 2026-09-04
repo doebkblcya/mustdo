@@ -1,15 +1,15 @@
-<view wx:if="{{visible}}" class="processing-mask" catchtouchmove="noop" bindtap="onPanelTap">
-  <scroll-view class="processing-panel" scroll-y="{{true}}" catchtap="onPanelTap" bindtouchstart="onPanelTap">
-    <view wx:if="{{panel.phase === 'reviewing' || panel.phase === 'done' || panel.phase === 'error'}}" class="panel-header">
+<view wx:if="{{visible}}" class="processing-mask" catchtouchmove="noop">
+  <scroll-view class="processing-panel" scroll-y="{{true}}">
+    <view wx:if="{{panel.phase === 'reviewing' || panel.phase === 'error'}}" class="panel-header">
       <text class="panel-title">
-        {{panel.phase === 'reviewing' ? '确认待办' : (panel.phase === 'done' ? '处理完成' : '处理遇到问题')}}
+        {{panel.phase === 'reviewing' ? '确认待办' : '处理遇到问题'}}
       </text>
       <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">
         <image class="panel-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
       </button>
     </view>
 
-    <view wx:if="{{panel.phase !== 'reviewing' && panel.phase !== 'done' && panel.phase !== 'error'}}" class="step-list">
+    <view wx:if="{{panel.phase !== 'reviewing' && panel.phase !== 'error'}}" class="step-list">
       <view wx:for="{{steps}}" wx:key="key" class="step-row step-row--{{item.state}}">
         <view class="step-rail">
           <view class="step-marker">
@@ -22,7 +22,13 @@
         <view class="step-copy">
           <text class="step-label">{{item.label}}</text>
           <text wx:if="{{item.summary}}" class="step-summary">“{{item.summary}}”</text>
-          <text wx:elif="{{item.state === 'active' && item.key === 'parsing'}}" class="step-summary">正在提取待办事项和时间信息</text>
+          <!-- AI 解析完成后：步骤内展开解析出的待办条目（只读，展示到面板关闭） -->
+          <view wx:if="{{item.key === 'parsing' && panel.items.length}}" class="step-parsed">
+            <view wx:for="{{panel.items}}" wx:for-item="todo" wx:key="_key" class="step-parsed-row">
+              <text class="step-parsed-content">{{todo.content}}</text>
+              <text class="step-parsed-meta">{{todo.due_date}}{{todo.due_time ? ' · ' + todo.due_time : ''}}</text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
@@ -47,7 +53,6 @@
 
       <view class="review-heading-row review-items-heading">
         <text class="review-heading">待办</text>
-        <text class="review-count">{{panel.items.length}} 项</text>
       </view>
 
       <scroll-view wx:if="{{panel.items.length}}" class="review-list {{panel.items.length > 4 ? 'review-list--scroll' : ''}}" scroll-y="{{panel.items.length > 4}}">
@@ -82,13 +87,6 @@
       <button class="primary-action" disabled="{{panel.items.length === 0}}" bindtap="confirmSave">
         确认添加{{panel.items.length ? ' ' + panel.items.length + ' 项' : ''}}
       </button>
-    </view>
-
-    <view wx:elif="{{panel.phase === 'done'}}" class="result-section">
-      <view class="result-symbol">
-        <image class="result-symbol-icon" src="/assets/icons/png/check_white.png" mode="aspectFit" />
-      </view>
-      <text class="result-title">{{panel.created.length ? '已添加 ' + panel.created.length + ' 项' : panel.message}}</text>
     </view>
 
     <view wx:elif="{{panel.phase === 'error'}}" class="error-section">

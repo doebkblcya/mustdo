@@ -81,7 +81,8 @@ Component({
         visible,
         steps: this._buildSteps(panel),
         rerecordOnly: false,
-        canClose: visible && !IN_FLIGHT.includes(panel.phase),
+        // 关闭入口只在「确认待办」和错误态出现；其余阶段（含全绿收尾停留）自动走
+        canClose: visible && (panel.phase === "reviewing" || panel.phase === "error"),
       });
       this.triggerEvent("statechange", { active: visible, phase: panel.phase });
     },
@@ -97,6 +98,9 @@ Component({
         { key: "parsing", label: "AI 解析" },
         { key: "saving", label: "保存待办" },
       ];
+      // saved：保存成功收尾（三步全绿停留后自动关）；no_result：解析出 0 条（提示后停留自动关）
+      const allComplete = panel.phase === "saved";
+      const zeroResult = panel.phase === "no_result";
       let currentKey = panel.phase;
       if (panel.phase === "uploading" || panel.phase === "transcribing") currentKey = "source";
       if (panel.phase === "reviewing") currentKey = "saving";
@@ -108,15 +112,20 @@ Component({
       const current = defs.findIndex((item) => item.key === currentKey);
       return defs.map((item, index) => {
         let state = "pending";
-        if (panel.phase === "done") state = "complete";
+        if (allComplete) state = "complete";
+        else if (zeroResult) state = index <= 1 ? "complete" : "pending";
         else if (index < current) state = "complete";
         else if (index === current) state = panel.phase === "error" ? "error" : "active";
         if (panel.source === "text" && item.key === "source") state = "complete";
         if (panel.phase === "reviewing" && item.key === "saving") state = "pending";
         let summary = "";
+        // 语音识别 / 文字输入：步骤下展示转写或输入内容
         if (item.key === "source" && panel.transcript) summary = panel.transcript;
-        if (item.key === "parsing" && panel.items.length) summary = panel.items.length + " 项";
-        if (item.key === "saving" && panel.created.length) summary = panel.created.length + " 项";
+        // AI 解析：解析出 0 条时在步骤下提示（有条目时仅展开条目列表，不再显示 N 项计数）
+        if (item.key === "parsing" && panel.phase === "no_result") {
+          summary = panel.message || "没有识别到需要新增的待办";
+        }
+        // 保存待办：步骤下不展示内容
         return { ...item, state, summary };
       });
     },
@@ -169,7 +178,8 @@ Component({
           return;
         }
         if (!items.length) {
-          this._finish([], message || "没有识别到需要新增的待办");
+          // 自动模式解析出 0 条：AI 解析步骤下提示，停留后自动关闭（无成功卡）
+          this._settleNoResult(message || "没有识别到需要新增的待办");
           return;
         }
         this._patchPanel({ phase: "saving", transcript: result.transcript, items, message: "" });
@@ -189,20 +199,30 @@ Component({
       this._patchPanel({ phase: "saving", errorStep: "", message: "" });
       try {
         const result = await api.batchCreateTodos(items);
-        this._finish(result.items || [], "");
+        this._settleSaved(result.items || []);
       } catch (error) {
         this._setError("saving", error.message || "保存失败");
       }
     },
 
-    _finish(created, message) {
-      this._patchPanel({ phase: "done", created, message });
+    // 保存成功：步骤条三步全绿停留（1.3s）让用户看清后自动关闭，无 done 成功卡
+    _settleSaved(created) {
+      this._patchPanel({ phase: "saved", created, message: "" });
       if (created.length) {
         wx.vibrateShort({ type: "light" });
         this.triggerEvent("saved", { items: created });
       }
-      // 轻量通知型完成态：1.4s 足够看清「已添加 N 项」，随后自动关闭回列表
-      this._doneTimer = setTimeout(() => this._closeNow(), 1400);
+      this._doneTimer = setTimeout(() => this._closeNow(), 1300);
+    },
+
+    // 自动模式解析 0 条：AI 解析步骤下提示文案，短暂停留后自动关闭
+    _settleNoResult(message) {
+      this._patchPanel({
+        phase: "no_result",
+        created: [],
+        message: message || "没有识别到需要新增的待办",
+      });
+      this._doneTimer = setTimeout(() => this._closeNow(), 1300);
     },
 
     _setError(step, message, rerecordOnly) {
@@ -296,10 +316,6 @@ Component({
         return;
       }
       this._closeNow();
-    },
-
-    onPanelTap() {
-      this._clearDoneTimer();
     },
 
     _closeNow() {
