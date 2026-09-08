@@ -48,7 +48,7 @@ Page({
     error: "",
     todayDate: "",
 
-    // 编辑 bottom sheet（结构与视觉来自 styles/sheet.wxss，进出场用 CSS 过渡）
+    // 编辑 bottom sheet（结构与视觉来自 app.wxss，进出场用 CSS 过渡）
     editVisible: false,
     sheetOpen: false,
     sheetClosing: false,

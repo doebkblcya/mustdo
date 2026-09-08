@@ -277,3 +277,307 @@ page.reduced-motion .skeleton-line {
   animation: none;
   opacity: 0.45;
 }
+
+/* ================================================================
+   Bottom sheet — 编辑 / 提醒弹层（todos、trash 共用）
+
+   结构约定：
+     .sheet-mask
+       └─ .edit-sheet
+            ├─ .sheet-handle-area > .sheet-handle
+            ├─ .sheet-head > .sheet-title + .sheet-close
+            ├─ scroll-view.sheet-scroll > .sheet-scroll-content > .sheet-section*
+            └─ .sheet-footer > .save-button
+
+   高度模型：弹层按内容自适应，最高 92vh。内容超出时只有
+   .sheet-scroll 滚动，头尾（标题 / 底部主按钮）固定不动。
+   不要再给 .edit-sheet 写固定 height，也不要给 .sheet-scroll 写
+   height: 0 —— 那会让短内容也撑满 92vh。
+
+   动画不进本文件：todos 页由 JS 弹簧（sheetTranslateY / maskOpacity
+   内联样式）驱动，trash 页由页面内的 CSS 过渡驱动。
+
+   放在 app.wxss 而不是单独的 styles/*.wxss + @import：避免新建目录
+   后开发者工具不索引 / @import 路径解析差异导致的编译报错。
+   ================================================================ */
+
+.sheet-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
+}
+
+.edit-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 92vh;
+  /* 横向裁掉溢出，纵向留出兜底滚动：正常情况由 .sheet-scroll 滚动，
+     弹层自身不会溢出；若个别环境给不出滚动区高度，这里仍可滚到底部按钮 */
+  overflow: hidden;
+  overflow-y: auto;
+  padding: 0 40rpx;
+  border-radius: 96rpx 96rpx 0 0;
+  background: #f9f9f9;
+  box-sizing: border-box;
+  box-shadow: 0 -16rpx 60rpx rgba(0, 0, 0, 0.12);
+}
+
+.sheet-handle-area {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 20rpx 0 24rpx;
+}
+
+.sheet-handle {
+  width: 64rpx;
+  height: 8rpx;
+  border-radius: 9999rpx;
+  background: #dadada;
+}
+
+.sheet-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.sheet-title {
+  color: #000000;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 50rpx;
+  letter-spacing: -0.02em;
+}
+
+.sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 64rpx;
+  width: 64rpx;
+  height: 64rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: #eeeeee;
+}
+
+.sheet-close::after {
+  display: none;
+}
+
+.sheet-close:active {
+  transform: scale(0.96);
+  opacity: 0.7;
+  transition: transform 80ms ease-out;
+}
+
+.sheet-close-icon {
+  display: block;
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.7;
+}
+
+/* 自适应高度：内容短时贴合内容，超长时才收缩成可滚动区域 */
+.sheet-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.sheet-scroll-content {
+  padding: 16rpx 0 24rpx;
+}
+
+.sheet-section + .sheet-section {
+  margin-top: 40rpx;
+}
+
+.sheet-section-label {
+  display: block;
+  margin: 0 16rpx 16rpx;
+  color: #5d5e63;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+  letter-spacing: 0.04em;
+}
+
+.edit-task-field {
+  width: 100%;
+  height: 112rpx;
+  padding: 0 40rpx;
+  border: 1rpx solid transparent;
+  border-radius: 64rpx;
+  background: #f3f3f4;
+  box-sizing: border-box;
+  color: #000000;
+  font-size: 34rpx;
+  line-height: 44rpx;
+}
+
+.edit-task-field:focus {
+  background: #eeeeee;
+}
+
+.edit-placeholder {
+  color: rgba(76, 69, 70, 0.5);
+  font-size: 34rpx;
+}
+
+.schedule-card {
+  overflow: hidden;
+  border-radius: 64rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.04);
+}
+
+.setting-picker {
+  display: block;
+}
+
+.sheet-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 120rpx;
+  padding: 16rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.sheet-setting-row:active {
+  opacity: 0.65;
+}
+
+.sheet-setting-row--time {
+  min-height: 96rpx;
+  padding-left: 104rpx;
+}
+
+.setting-leading,
+.setting-value-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.setting-leading {
+  min-width: 0;
+  flex: 1;
+  gap: 24rpx;
+}
+
+.setting-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: #eeeeee;
+}
+
+.setting-icon {
+  display: block;
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.72;
+}
+
+.setting-title {
+  display: block;
+  color: #1a1c1c;
+  font-size: 30rpx;
+  line-height: 40rpx;
+}
+
+.setting-value-wrap {
+  flex: 0 0 auto;
+  gap: 4rpx;
+  margin-left: 16rpx;
+}
+
+.setting-value {
+  color: #5d5e63;
+  font-size: 26rpx;
+  line-height: 36rpx;
+}
+
+.setting-value--strong {
+  color: #000000;
+  font-size: 30rpx;
+}
+
+.setting-chevron {
+  display: block;
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.42;
+}
+
+.sheet-divider {
+  height: 1rpx;
+  margin-left: 104rpx;
+  background: #e2e2e2;
+}
+
+.sheet-divider--indented {
+  margin-left: 104rpx;
+}
+
+.sheet-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 88rpx;
+  height: 52rpx;
+  border-radius: 9999rpx;
+  background: #e2e2e2;
+  transition: background 160ms ease;
+}
+
+.sheet-switch-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
+  transition: transform 160ms ease;
+}
+
+.sheet-switch--on {
+  background: #000000;
+}
+
+.sheet-switch--on .sheet-switch-thumb {
+  transform: translateX(36rpx);
+}
+
+.sheet-footer {
+  flex: 0 0 auto;
+  padding: 24rpx 0;
+  padding-bottom: calc(24rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+
+.save-button {
+  height: 112rpx;
+  margin: 0;
+  border-radius: 64rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 112rpx;
+}
