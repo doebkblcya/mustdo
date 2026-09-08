@@ -5,13 +5,13 @@ import sqlite3
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 
 from app.deps import current_user_invited, get_db
 from app.errors import raise_api_error
 from app.schemas import TranscriptionResponse
 from app.services.asr import VolcAsrError, VolcSilentAudioError, recognize_pcm
-from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm
+from app.services.audio import PCM_BYTES_PER_SECOND, prepare_upload_for_asr
 from app.services.quota import check_asr_quota, record_asr_usage
 
 router = APIRouter(prefix="/api", tags=["voice"])
@@ -48,6 +48,7 @@ def _record_asr(
 @router.post("/voice/transcriptions", response_model=TranscriptionResponse)
 async def create_transcription(
     file: UploadFile = File(...),
+    trace_id: str | None = Header(default=None, alias="X-Trace-ID"),
     db: sqlite3.Connection = Depends(get_db),
     user: sqlite3.Row = Depends(current_user_invited),
 ):
@@ -56,7 +57,10 @@ async def create_transcription(
 
     # Validate/decode the upload first. Format/length errors raise here and
     # never reach an upstream ASR call, so they consume no quota.
-    pcm = await read_upload_as_pcm(file)
+    prepare_started_at = perf_counter()
+    prepared = await prepare_upload_for_asr(file)
+    pcm = prepared.pcm
+    prepare_ms = _elapsed_ms(prepare_started_at)
     audio_seconds = len(pcm) / PCM_BYTES_PER_SECOND
     request_id = uuid4().hex
 
@@ -64,7 +68,11 @@ async def create_transcription(
     check_asr_quota(db, user_id, audio_seconds)
 
     try:
-        result = await recognize_pcm(pcm, request_id=request_id)
+        result = await recognize_pcm(
+            pcm,
+            request_id=request_id,
+            upstream_audio=prepared.upstream_data,
+        )
     except VolcSilentAudioError as exc:
         # Sample first 64 bytes to diagnose silent audio (e.g. DevTools all-zeros)
         pcm_sample = pcm[:64].hex()
@@ -118,8 +126,19 @@ async def create_transcription(
         started_at=started_at,
     )
     logger.info(
-        "voice_transcription_done elapsed_ms=%s audio_seconds=%.3f transcript_chars=%s",
+        "voice_transcription_done trace_id=%s request_id=%s elapsed_ms=%s "
+        "prepare_ms=%s encode_ms=%s upstream_ms=%s source_format=%s "
+        "source_bytes=%s pcm_bytes=%s "
+        "audio_seconds=%.3f transcript_chars=%s",
+        trace_id or "-",
+        request_id,
         _elapsed_ms(started_at),
+        prepare_ms,
+        result.encode_ms,
+        result.upstream_ms,
+        prepared.source_format,
+        prepared.source_bytes,
+        len(pcm),
         audio_seconds,
         len(result.text),
     )

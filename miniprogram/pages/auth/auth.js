@@ -17,6 +17,13 @@ Page({
         ? menuButton.bottom + 32
         : (windowInfo.statusBarHeight || 0) + 76,
     });
+    const storedUser = api.getStoredUser();
+    // Existing installs have no `invited` marker; those users already passed
+    // the invite gate. Newly-created, uninvited sessions explicitly store false.
+    if (api.getToken() && storedUser && storedUser.invited !== false) {
+      wx.redirectTo({ url: "/pages/todos/todos" });
+      return;
+    }
     this.silentLogin();
   },
 

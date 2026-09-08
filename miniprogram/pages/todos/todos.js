@@ -1790,7 +1790,8 @@ Page({
         duration: config.RECORD_MAX_DURATION,
         sampleRate: 16000,
         numberOfChannels: 1,
-        format: "pcm",
+        format: "mp3",
+        encodeBitRate: 48000,
         frameSize: 4,
       });
       // start() 后立即标记原生忙碌，防止 onStop 前快速重按再次 start()

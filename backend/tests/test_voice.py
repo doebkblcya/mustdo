@@ -22,7 +22,11 @@ if ROOT not in sys.path:
 from fastapi import HTTPException  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.services.asr import VolcAsrError, pcm_to_wav, recognize_pcm  # noqa: E402
-from app.services.audio import PCM_BYTES_PER_SECOND, read_upload_as_pcm  # noqa: E402
+from app.services.audio import (  # noqa: E402
+    PCM_BYTES_PER_SECOND,
+    prepare_upload_for_asr,
+    read_upload_as_pcm,
+)
 
 
 def _pcm_silence(seconds: float) -> bytes:
@@ -125,19 +129,23 @@ class VolcAsrServiceTests(unittest.TestCase):
             )
             mock_response.json = lambda: json.loads(mock_response.text)
 
+            post = AsyncMock(return_value=mock_response)
             with patch(
                 "app.services.asr._get_client",
-                return_value=SimpleNamespace(
-                    post=AsyncMock(return_value=mock_response)
-                ),
+                return_value=SimpleNamespace(post=post),
             ):
-                result = await recognize_pcm(_pcm_silence(1))
-                return result
+                mp3 = b"ID3-test-audio"
+                result = await recognize_pcm(_pcm_silence(1), upstream_audio=mp3)
+                return result, post, mp3
 
-        result = asyncio.run(run())
+        result, post, mp3 = asyncio.run(run())
         self.assertEqual(result.text, "今天去买菜")
         self.assertTrue(result.request_id)
         self.assertEqual(result.logid, "test-logid")
+        self.assertEqual(
+            post.await_args.kwargs["json"]["audio"]["data"],
+            base64.b64encode(mp3).decode(),
+        )
 
     def test_recognize_pcm_raises_on_silence_audio(self) -> None:
         async def run():
@@ -230,11 +238,16 @@ class AudioUploadTests(unittest.TestCase):
         self.assertEqual(raised.exception.detail["message"], f"录音超过 {max_seconds:.0f} 秒")
 
     def test_mp3_upload_is_transcoded_to_pcm(self) -> None:
-        upload = FakeUpload(_make_mp3(2.0), "recording.mp3", "audio/mpeg")
+        raw = _make_mp3(2.0)
+        # wx.uploadFile may use the generic MIME type; the .mp3 filename must
+        # still take precedence over application/octet-stream.
+        upload = FakeUpload(raw, "recording.mp3", "application/octet-stream")
 
-        result = asyncio.run(read_upload_as_pcm(upload))
-        duration = len(result) / PCM_BYTES_PER_SECOND
+        result = asyncio.run(prepare_upload_for_asr(upload))
+        duration = len(result.pcm) / PCM_BYTES_PER_SECOND
         self.assertAlmostEqual(duration, 2.0, delta=0.2)
+        self.assertEqual(result.upstream_data, raw)
+        self.assertEqual(result.source_format, "mp3")
 
 
 if __name__ == "__main__":

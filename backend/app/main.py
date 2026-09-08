@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from time import perf_counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -13,6 +15,9 @@ from app.routers import auth, invites, reminders, todos, trash, voice
 from app.services.deepseek import close_deepseek_client
 from app.services.scheduler import reminder_loop
 from app.services.wechat import close_wechat_client
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def create_app() -> FastAPI:
@@ -34,6 +39,21 @@ def create_app() -> FastAPI:
         await close_wechat_client()
 
     app = FastAPI(title="Mustdo", version="0.1.0", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def log_voice_request_timing(request, call_next):
+        if request.url.path != "/api/voice/transcriptions":
+            return await call_next(request)
+        started_at = perf_counter()
+        response = await call_next(request)
+        logger.info(
+            "voice_http_done trace_id=%s request_ms=%s request_bytes=%s status_code=%s",
+            request.headers.get("x-trace-id", "-"),
+            round((perf_counter() - started_at) * 1000),
+            request.headers.get("content-length", "-"),
+            response.status_code,
+        )
+        return response
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
 

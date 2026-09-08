@@ -4,6 +4,7 @@ import base64
 import logging
 import struct
 from dataclasses import dataclass
+from time import perf_counter
 from uuid import uuid4
 
 import httpx
@@ -78,9 +79,16 @@ class AsrResult:
     text: str
     request_id: str
     logid: str | None
+    encode_ms: int
+    upstream_ms: int
 
 
-async def recognize_pcm(pcm: bytes, *, request_id: str | None = None) -> AsrResult:
+async def recognize_pcm(
+    pcm: bytes,
+    *,
+    request_id: str | None = None,
+    upstream_audio: bytes | None = None,
+) -> AsrResult:
     """将 PCM 音频发送到火山引擎录音文件极速版识别，返回识别结果。
 
     ``request_id`` is the upstream ``X-Api-Request-Id``; when not supplied one
@@ -91,8 +99,10 @@ async def recognize_pcm(pcm: bytes, *, request_id: str | None = None) -> AsrResu
     """
     settings = get_settings()
 
-    wav = pcm_to_wav(pcm)
-    audio_base64 = base64.b64encode(wav).decode()
+    encode_started_at = perf_counter()
+    audio = upstream_audio if upstream_audio is not None else pcm_to_wav(pcm)
+    audio_base64 = base64.b64encode(audio).decode()
+    encode_ms = round((perf_counter() - encode_started_at) * 1000)
 
     request_id = request_id or uuid4().hex
 
@@ -124,11 +134,13 @@ async def recognize_pcm(pcm: bytes, *, request_id: str | None = None) -> AsrResu
     client = _get_client()
 
     try:
+        upstream_started_at = perf_counter()
         response = await client.post(
             "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash",
             json=body,
             headers=headers,
         )
+        upstream_ms = round((perf_counter() - upstream_started_at) * 1000)
     except httpx.HTTPError as exc:
         logger.warning("volc_asr_http_error error=%r", exc)
         raise VolcAsrError("火山引擎 ASR 请求失败") from exc
@@ -158,10 +170,20 @@ async def recognize_pcm(pcm: bytes, *, request_id: str | None = None) -> AsrResu
         raise VolcAsrError("火山引擎未返回有效文本", logid=logid)
 
     logger.info(
-        "volc_asr_done logid=%s audio_seconds=%.3f text_chars=%s",
+        "volc_asr_done request_id=%s logid=%s encode_ms=%s upstream_ms=%s "
+        "audio_seconds=%.3f text_chars=%s",
+        request_id,
         logid,
+        encode_ms,
+        upstream_ms,
         len(pcm) / 32000,
         len(text),
     )
 
-    return AsrResult(text=text.strip(), request_id=request_id, logid=logid or None)
+    return AsrResult(
+        text=text.strip(),
+        request_id=request_id,
+        logid=logid or None,
+        encode_ms=encode_ms,
+        upstream_ms=upstream_ms,
+    )

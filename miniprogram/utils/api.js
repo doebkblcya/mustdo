@@ -15,7 +15,9 @@ function getToken() {
 
 function setSession(auth) {
   wx.setStorageSync(TOKEN_KEY, auth.token);
-  wx.setStorageSync(USER_KEY, auth.user);
+  var user = auth.user || {};
+  user.invited = !auth.needs_invite;
+  wx.setStorageSync(USER_KEY, user);
 }
 
 function clearSession() {
@@ -125,6 +127,11 @@ function redeemInvite(code) {
   return request("/api/invites/redeem", {
     method: "POST",
     data: { code: code }
+  }).then(function(result) {
+    var user = getStoredUser() || {};
+    user.invited = true;
+    wx.setStorageSync(USER_KEY, user);
+    return result;
   });
 }
 
@@ -179,12 +186,15 @@ function organizeTodos(data) {
 }
 
 function uploadVoice(filePath, onUploaded) {
-  return uploadVoiceOnce(filePath, false, onUploaded);
+  var traceId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  return uploadVoiceOnce(filePath, false, onUploaded, traceId);
 }
 
-function uploadVoiceOnce(filePath, retried, onUploaded) {
+function uploadVoiceOnce(filePath, retried, onUploaded, traceId) {
   var token = getToken();
   return new Promise(function(resolve, reject) {
+    var startedAt = Date.now();
+    var uploadedAt = 0;
     var uploadedNotified = false;
     var uploadTask = wx.uploadFile({
       url: apiUrl("/api/voice/transcriptions"),
@@ -192,9 +202,18 @@ function uploadVoiceOnce(filePath, retried, onUploaded) {
       name: "file",
       header: {
         Authorization: "Bearer " + token,
+        "X-Trace-ID": traceId,
       },
       success: function(res) {
+        var totalMs = Date.now() - startedAt;
         var statusCode = res.statusCode || 0;
+        console.info("[voice_timing]", {
+          trace_id: traceId,
+          attempt: retried ? 2 : 1,
+          status_code: statusCode,
+          upload_progress_ms: uploadedAt ? uploadedAt - startedAt : null,
+          request_total_ms: totalMs,
+        });
         if (statusCode >= 200 && statusCode < 300) {
           try {
             resolve(JSON.parse(res.data));
@@ -207,7 +226,7 @@ function uploadVoiceOnce(filePath, retried, onUploaded) {
         if (statusCode === 401 && !retried) {
           _relogin()
             .then(function() {
-              resolve(uploadVoiceOnce(filePath, true, onUploaded));
+              resolve(uploadVoiceOnce(filePath, true, onUploaded, traceId));
             })
             .catch(reject);
           return;
@@ -219,6 +238,13 @@ function uploadVoiceOnce(filePath, retried, onUploaded) {
         }
       },
       fail: function(err) {
+        console.info("[voice_timing]", {
+          trace_id: traceId,
+          attempt: retried ? 2 : 1,
+          status_code: 0,
+          upload_progress_ms: uploadedAt ? uploadedAt - startedAt : null,
+          request_total_ms: Date.now() - startedAt,
+        });
         reject(new Error(err.errMsg || "上传失败"));
       },
     });
@@ -226,6 +252,7 @@ function uploadVoiceOnce(filePath, retried, onUploaded) {
       uploadTask.onProgressUpdate(function(progress) {
         if (!uploadedNotified && progress.progress >= 100) {
           uploadedNotified = true;
+          uploadedAt = Date.now();
           onUploaded();
         }
       });
