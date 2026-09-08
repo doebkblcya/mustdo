@@ -316,10 +316,6 @@
     <view class="long-editor-mask" bindtap="closeLongEditor" catchtouchmove="noop"></view>
     <view class="long-editor-card" style="top: {{longEditorTop}}px;">
       <view class="long-editor-head">
-        <view class="long-editor-heading">
-          <text class="long-editor-title">输入待办</text>
-          <text class="long-editor-subtitle">输入一段话，AI 会自动整理成待办</text>
-        </view>
         <button class="long-editor-collapse" bindtap="closeLongEditor" aria-label="收起长文本输入">
           <image class="long-editor-collapse-icon" src="/assets/icons/png/close_fullscreen.png" mode="aspectFit" />
         </button>
@@ -357,8 +353,9 @@
             class="long-editor-submit {{!composerCanSubmit || composerSubmitting ? 'long-editor-submit--disabled' : ''}}"
             bindtap="submitComposerText"
             disabled="{{!composerCanSubmit || composerSubmitting}}"
+            aria-label="发送"
           >
-            <text>发送整理</text>
+            <text>发送</text>
           </button>
         </view>
       </view>

@@ -999,35 +999,8 @@ page {
 
 .long-editor-head {
   flex: 0 0 auto;
-  justify-content: space-between;
-  gap: 24rpx;
-  padding: 0 0 24rpx;
-}
-
-.long-editor-heading {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.long-editor-title,
-.long-editor-subtitle {
-  display: block;
-}
-
-.long-editor-title {
-  color: #000000;
-  font-size: 36rpx;
-  font-weight: 700;
-  line-height: 46rpx;
-  letter-spacing: -0.02em;
-}
-
-.long-editor-subtitle {
-  margin-top: 4rpx;
-  color: #5d5e63;
-  font-size: 24rpx;
-  line-height: 34rpx;
+  justify-content: flex-end;
+  padding: 0 0 20rpx;
 }
 
 .long-editor-collapse {
