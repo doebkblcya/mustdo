@@ -1,4 +1,4 @@
-<view class="todos-page {{composerTall && composerMode === 'keyboard' ? 'todos-page--composer-tall' : ''}}">
+<view class="todos-page {{composerTall && composerMode === 'keyboard' && !longEditorVisible ? 'todos-page--composer-tall' : ''}}">
   <!-- 自定义顶栏 -->
   <view class="app-header" style="padding-top: {{navTop}}px; height: {{navHeight}}px; padding-right: {{headerRightOffset}}px;">
     <text class="wordmark">mustdo</text>
@@ -229,43 +229,20 @@
     </view>
   </view>
 
-  <!-- Composer: one state model, separate compact/expanded geometry. -->
+  <!-- Compact composer: short input stays attached to the todo list. -->
   <view
-    class="input-dock {{expanded ? 'input-dock--expanded' : ''}} {{composerKeyboardHeight > 0 ? 'input-dock--keyboard-visible' : ''}}"
-    style="{{expanded ? ('bottom: ' + composerKeyboardHeight + 'px;') : ''}}"
+    wx:if="{{!longEditorVisible}}"
+    class="input-dock"
   >
     <view
-      class="composer-surface {{expanded ? 'composer-surface--expanded' : ''}} {{recording ? 'composer-surface--recording' : ''}}"
-      style="{{expanded ? ('top: ' + expandTop + 'px; bottom: 0;') : ('transform: translateY(' + composerLift + 'px);')}}"
+      class="composer-surface {{recording ? 'composer-surface--recording' : ''}}"
+      style="transform: translateY({{composerLift}}px);"
     >
       <view
         wx:if="{{composerMode === 'keyboard'}}"
         class="composer-editor"
       >
-        <!-- Mutually exclusive native nodes prevent compact scrollTop leaking
-             into the expanded editor. Both use the same text/cursor state. -->
         <textarea
-          wx:if="{{expanded}}"
-          class="composer-textarea composer-textarea--expanded"
-          value="{{composerText}}"
-          cursor="{{composerCursor}}"
-          placeholder="{{composerPlaceholder}}"
-          placeholder-class="composer-placeholder"
-          confirm-type="{{isIOS ? 'send' : 'return'}}"
-          focus="{{composerFocus}}"
-          fixed="{{true}}"
-          adjust-position="{{false}}"
-          auto-height="{{false}}"
-          hold-keyboard="{{true}}"
-          disable-default-padding="{{true}}"
-          show-confirm-bar="{{false}}"
-          maxlength="4000"
-          bindinput="onComposerInput"
-          bindconfirm="onComposerConfirm"
-          bindblur="onComposerBlur"
-        />
-        <textarea
-          wx:else
           class="composer-textarea composer-textarea--compact {{composerOverflow ? 'composer-textarea--overflow' : ''}}"
           value="{{composerText}}"
           cursor="{{composerCursor}}"
@@ -298,18 +275,27 @@
         <text class="composer-hold-text">{{recording ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
       </view>
 
-      <!-- Small outlined capsule; expanded mode repositions it over the editor. -->
       <view class="composer-action-group">
         <view
-          wx:if="{{composerMode === 'keyboard' && !isIOS && composerText}}"
+          wx:if="{{composerMode === 'keyboard' && longEditorAvailable}}"
+          class="composer-action composer-action--expand"
+          bindtap="openLongEditor"
+          aria-label="展开长文本输入"
+        >
+          <image class="composer-icon composer-icon--resize" src="/assets/icons/png/open_in_full.png" mode="aspectFit" />
+        </view>
+        <view
+          wx:if="{{composerMode === 'keyboard' && !isIOS && composerCanSubmit}}"
           class="composer-action composer-action--send"
           bindtap="submitComposerText"
+          aria-label="发送"
         >
           <image class="composer-icon" src="/assets/icons/png/send.png" mode="aspectFit" />
         </view>
         <view
           class="composer-action composer-action--toggle {{recording ? 'composer-action--disabled' : ''}}"
           bindtap="onComposerToggle"
+          aria-label="{{composerMode === 'keyboard' ? '切换到语音输入' : '切换到文字输入'}}"
         >
           <image
             class="composer-icon"
@@ -318,21 +304,63 @@
           />
         </view>
       </view>
+    </view>
+  </view>
 
-      <!-- Same visual language as the action dock; always owned by the surface. -->
-      <view
-        wx:if="{{expanded}}"
-        class="composer-corner-control composer-corner-control--expanded"
-        bindtap="closeExpand"
-      >
-        <image class="resize-icon" src="/assets/icons/png/close_fullscreen.png" mode="aspectFit" />
+  <!-- Long text gets a focused editor card above the keyboard. -->
+  <view
+    wx:if="{{longEditorVisible}}"
+    class="long-editor-layer {{composerKeyboardHeight > 0 ? 'long-editor-layer--keyboard-visible' : ''}}"
+    style="bottom: {{composerKeyboardHeight}}px;"
+  >
+    <view class="long-editor-mask" bindtap="closeLongEditor" catchtouchmove="noop"></view>
+    <view class="long-editor-card" style="top: {{longEditorTop}}px;">
+      <view class="long-editor-head">
+        <view class="long-editor-heading">
+          <text class="long-editor-title">输入待办</text>
+          <text class="long-editor-subtitle">输入一段话，AI 会自动整理成待办</text>
+        </view>
+        <button class="long-editor-collapse" bindtap="closeLongEditor" aria-label="收起长文本输入">
+          <image class="long-editor-collapse-icon" src="/assets/icons/png/close_fullscreen.png" mode="aspectFit" />
+        </button>
       </view>
-      <view
-        wx:elif="{{expandVisible}}"
-        class="composer-corner-control"
-        bindtap="openExpand"
-      >
-        <image class="resize-icon" src="/assets/icons/png/open_in_full.png" mode="aspectFit" />
+
+      <view class="long-editor-body">
+        <textarea
+          class="long-editor-textarea"
+          value="{{composerText}}"
+          cursor="{{composerCursor}}"
+          placeholder="{{composerPlaceholder}}"
+          placeholder-class="composer-placeholder"
+          confirm-type="return"
+          focus="{{longEditorFocus}}"
+          fixed="{{true}}"
+          adjust-position="{{false}}"
+          auto-height="{{false}}"
+          hold-keyboard="{{true}}"
+          disable-default-padding="{{true}}"
+          show-confirm-bar="{{false}}"
+          maxlength="4000"
+          cursor-spacing="24"
+          bindinput="onComposerInput"
+          bindblur="onLongEditorBlur"
+        />
+      </view>
+
+      <view class="long-editor-footer">
+        <text class="long-editor-count">{{composerLength}} / 4000</text>
+        <view class="long-editor-actions">
+          <button class="long-editor-voice" bindtap="useVoiceFromLongEditor" aria-label="切换到语音输入">
+            <image class="long-editor-action-icon" src="/assets/icons/png/mic.png" mode="aspectFit" />
+          </button>
+          <button
+            class="long-editor-submit {{!composerCanSubmit || composerSubmitting ? 'long-editor-submit--disabled' : ''}}"
+            bindtap="submitComposerText"
+            disabled="{{!composerCanSubmit || composerSubmitting}}"
+          >
+            <text>发送整理</text>
+          </button>
+        </view>
       </view>
     </view>
   </view>

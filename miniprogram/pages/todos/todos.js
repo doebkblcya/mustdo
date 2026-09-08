@@ -145,17 +145,20 @@ Page({
     composerCursor: -1,
     composerFocus: false,
     composerSubmitting: false,
+    composerCanSubmit: false,
     composerPlaceholder: "输入文字",
     composerLift: 0, // px — lift above keyboard
     isIOS: false,    // iOS uses keyboard confirm key, no in-bar send arrow
 
-    // Long-text composer. Compact/expanded native nodes share text and cursor state.
-    expandVisible: false,
-    expanded: false,
+    // Long-text editor. The compact composer and editor card have independent focus.
+    longEditorAvailable: false,
+    longEditorVisible: false,
+    longEditorFocus: false,
+    composerLength: 0,
     composerOverflow: false,
     composerTall: false,
     composerKeyboardHeight: 0,
-    expandTop: 0,
+    longEditorTop: 0,
 
     // Edit sheet
     editVisible: false,
@@ -213,8 +216,6 @@ Page({
 
   // ---- Other ----
   _editCloseTimer: null,
-  _composerSwitchTimer: null,
-  _composerSwitching: false,
 
   // ========== Lifecycle ==========
 
@@ -247,11 +248,13 @@ Page({
     const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
     this.setData({
       isIOS: device.platform === "ios",
-      expandTop: Math.round(windowInfo.windowHeight * 0.2),
+      longEditorTop: Math.round(
+        (menuButton ? menuButton.top + menuButton.height : (windowInfo.statusBarHeight || 0) + 32)
+        + 20 * this._rpxToPx
+      ),
     });
 
-    // Pin the compact bar above the keyboard. In expanded mode the same height
-    // becomes the panel's bottom inset, keeping its top visible on small screens.
+    // Pin the compact bar or long-text card directly above the keyboard.
     if (wx.onKeyboardHeightChange) {
       this._keyboardHeightHandler = (res) => {
         const height = Math.max(0, Number(res.height) || 0);
@@ -278,7 +281,6 @@ Page({
     if (wx.offKeyboardHeightChange && this._keyboardHeightHandler) {
       wx.offKeyboardHeightChange(this._keyboardHeightHandler);
     }
-    if (this._composerSwitchTimer) clearTimeout(this._composerSwitchTimer);
     this._stopAllSprings();
   },
 
@@ -1566,7 +1568,8 @@ Page({
       this.setData({
         composerMode: "voice",
         composerFocus: false,
-        expanded: false,
+        longEditorVisible: false,
+        longEditorFocus: false,
       });
     } else {
       // Switch to text input and focus immediately — keyboard pops up
@@ -1613,24 +1616,26 @@ Page({
     const cursor = Number(event.detail.cursor);
     const patch = {
       composerText: value,
+      composerLength: value.length,
+      composerCanSubmit: value.trim().length > 0,
       composerCursor: Number.isFinite(cursor) ? cursor : value.length,
     };
     if (!value) {
-      patch.expandVisible = false;
+      patch.longEditorAvailable = false;
       patch.composerOverflow = false;
       patch.composerTall = false;
     }
     this.setData(patch);
   },
 
-  // The compact textarea grows naturally until its fifth visual line. At that
-  // point auto-height is disabled and the fixed-height textarea scrolls.
+  // The compact textarea grows naturally through four lines. Longer input
+  // scrolls in place and exposes the dedicated editor-card entry.
   onComposerLineChange(event) {
     const detail = event.detail || {};
     const lineCount = Math.max(1, Number(detail.lineCount) || 1);
     const overflow = lineCount >= 5;
     this.setData({
-      expandVisible: overflow,
+      longEditorAvailable: lineCount >= 4,
       composerOverflow: overflow,
       composerTall: lineCount >= 3,
     });
@@ -1641,35 +1646,34 @@ Page({
     if (this.data.isIOS) this.submitComposerText();
   },
 
-  // ---- Expanded composer ----
+  // ---- Long-text editor card ----
 
-  openExpand() {
-    if (this.data.expanded || this.data.composerMode !== "keyboard") return;
-    this._switchComposerLayout(true);
+  openLongEditor() {
+    if (this.data.longEditorVisible || this.data.composerMode !== "keyboard") return;
+    this.setData({
+      longEditorVisible: true,
+      longEditorFocus: true,
+      composerFocus: false,
+    });
   },
 
-  closeExpand() {
-    if (!this.data.expanded) return;
-    this._switchComposerLayout(false);
+  closeLongEditor() {
+    if (!this.data.longEditorVisible) return;
+    this.setData({
+      longEditorVisible: false,
+      longEditorFocus: false,
+      composerFocus: true,
+    });
   },
 
-  _switchComposerLayout(expanded) {
-    // The native textarea is intentionally remounted to reset its private
-    // scrollTop. Ignore the outgoing node's blur while the new one focuses.
-    this._composerSwitching = true;
-    if (this._composerSwitchTimer) clearTimeout(this._composerSwitchTimer);
-    this.setData({ expanded, composerFocus: true }, () => {
-      this._composerSwitchTimer = setTimeout(() => {
-        this._composerSwitching = false;
-        this._composerSwitchTimer = null;
-        if (
-          this.data.composerMode === "keyboard"
-          && !this.data.composerSubmitting
-          && !this.data.panelActive
-        ) {
-          this.setData({ composerFocus: true });
-        }
-      }, 80);
+  useVoiceFromLongEditor() {
+    if (this.data.composerSubmitting || this.data.panelActive) return;
+    wx.hideKeyboard();
+    this.setData({
+      composerMode: "voice",
+      composerFocus: false,
+      longEditorVisible: false,
+      longEditorFocus: false,
     });
   },
 
@@ -1677,7 +1681,14 @@ Page({
     const cursor = Number(event && event.detail && event.detail.cursor);
     const patch = {};
     if (Number.isFinite(cursor)) patch.composerCursor = cursor;
-    if (!this._composerSwitching) patch.composerFocus = false;
+    if (!this.data.longEditorVisible) patch.composerFocus = false;
+    this.setData(patch);
+  },
+
+  onLongEditorBlur(event) {
+    const cursor = Number(event && event.detail && event.detail.cursor);
+    const patch = { longEditorFocus: false };
+    if (Number.isFinite(cursor)) patch.composerCursor = cursor;
     this.setData(patch);
   },
 
@@ -1694,10 +1705,13 @@ Page({
     this.setData({
       composerSubmitting: true,
       composerText: "",
+      composerLength: 0,
+      composerCanSubmit: false,
       composerCursor: -1,
       composerFocus: false,
-      expanded: false,
-      expandVisible: false,
+      longEditorVisible: false,
+      longEditorFocus: false,
+      longEditorAvailable: false,
       composerOverflow: false,
       composerTall: false,
     });
