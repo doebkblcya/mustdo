@@ -28,12 +28,17 @@
         </view>
         <view class="list-tools">
           <button
-            class="organize-button {{organizeMode ? 'organize-button--active' : ''}}"
+            class="organize-button {{organizeMode ? 'organize-button--active' : ''}} {{organizing ? 'organize-button--loading' : ''}}"
             bindtap="toggleOrganize"
-            disabled="{{activeView !== 'today' || !todayHasPending}}"
+            disabled="{{activeView !== 'today' || !todayHasPending || organizing}}"
+            aria-label="{{organizing ? '正在整理待办' : 'AI 整理'}}"
           >
-            <image class="sparkle-icon" src="/assets/icons/png/auto_awesome.png" mode="aspectFit" />
-            <text>AI 整理</text>
+            <image
+              class="sparkle-icon {{organizing ? 'organize-button-spinner' : ''}}"
+              src="{{organizing ? '/assets/icons/png/progress_activity.png' : '/assets/icons/png/auto_awesome.png'}}"
+              mode="aspectFit"
+            />
+            <text>{{organizing ? '整理中' : 'AI 整理'}}</text>
           </button>
           <button class="visibility-button" bindtap="toggleShowCompleted" aria-label="{{showCompleted ? '隐藏已完成' : '显示已完成'}}">
             <image class="visibility-icon" src="{{showCompleted ? '/assets/icons/png/visibility.png' : '/assets/icons/png/visibility_off.png'}}" mode="aspectFit" />
@@ -100,12 +105,6 @@
           <view class="skeleton-action skeleton-shimmer"></view>
         </view>
       </view>
-    </view>
-
-    <!-- AI organizing state (today view only) -->
-    <view wx:elif="{{organizing && activeView === 'today'}}" class="organize-loading">
-      <image class="organize-loading-icon" src="/assets/icons/png/progress_activity.png" mode="aspectFit" />
-      <text class="organize-loading-title">正在整理…</text>
     </view>
 
     <!-- Error state -->
