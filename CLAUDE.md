@@ -155,6 +155,13 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 - 白色/红色等颜色状态用独立文件表达（`check_white`/`refresh_white`/`delete_error`/`error_red`），不依赖 CSS 染色
 - **坑**：`project.private.config.json` 的 `ignoreDevUnusedFiles` 开启时会裁剪「未识别为已引用」的新增资源，导致真机包里缺文件（表现为 getImageInfo fail image not found）；新增资源目录后重启开发者工具 + 手动编译
 
+### 底部弹层（编辑 / 提醒）
+- 样式抽到 `styles/sheet.wxss`，`todos` 与 `trash` 两页各自 `@import` 共用，不再各写一份
+- 结构固定：`.sheet-mask > .edit-sheet > [.sheet-handle-area, .sheet-head, scroll-view.sheet-scroll > .sheet-scroll-content, .sheet-footer]`
+- 高度按内容自适应（`max-height: 92vh`），超出时只有 `.sheet-scroll` 滚动，标题与底部主按钮固定；不要再给 `.edit-sheet` 写固定 `height` 或给 `.sheet-scroll` 写 `height: 0`
+- 进出场：todos 由 JS 弹簧驱动（`sheetTranslateY`/`maskOpacity` 内联样式，且 `_measureAndOpenSheet` 首帧先置屏幕外），trash 用 CSS 过渡（`.sheet-mask--open` + `SHEET_TRANSITION_MS` 两阶段类切换）
+- 弹层遮罩不要加 `catchtouchmove`，否则会挡住内部 `scroll-view` 滚动
+
 ### 关键约定
 - 乐观更新后用本地排序不用 `loadTodos`（即时响应）
 - 回滚用 `id` 定位不用 `index`（排序后 index 会变）

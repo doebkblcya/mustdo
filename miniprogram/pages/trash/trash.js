@@ -28,6 +28,9 @@ function daysBetween(aStr, bStr) {
   return Math.round((a - b) / 86400000);
 }
 
+// 弹层进出场过渡时长，需与 trash.wxss 中的 transition 保持一致
+var SHEET_TRANSITION_MS = 240;
+
 Page({
   // 请求序号：快速切换 tab 时丢弃过期响应，避免旧列表覆盖新 tab
   _reqSeq: 0,
@@ -45,8 +48,10 @@ Page({
     error: "",
     todayDate: "",
 
-    // 编辑 bottom sheet（简化版，无拖拽动画）
+    // 编辑 bottom sheet（结构与视觉来自 styles/sheet.wxss，进出场用 CSS 过渡）
     editVisible: false,
+    sheetOpen: false,
+    sheetClosing: false,
     editTodoId: null,
     editContent: "",
     editDate: "",
@@ -70,6 +75,13 @@ Page({
       todayDate: todayStr(),
     });
     this.loadList();
+  },
+
+  onUnload() {
+    if (this._sheetTimer) {
+      clearTimeout(this._sheetTimer);
+      this._sheetTimer = null;
+    }
   },
 
   onPullDownRefresh() {
@@ -215,8 +227,15 @@ Page({
     var id = Number(event.currentTarget.dataset.id);
     var item = this.data.items.find(function(i) { return i.id === id; });
     if (!item) return;
+    if (this._sheetTimer) {
+      clearTimeout(this._sheetTimer);
+      this._sheetTimer = null;
+    }
+    // 先以「关闭态」渲染，下一帧再加 --open，让过渡真正跑起来
     this.setData({
       editVisible: true,
+      sheetOpen: false,
+      sheetClosing: false,
       editTodoId: id,
       editContent: item.content,
       editDate: item.due_date,
@@ -224,6 +243,10 @@ Page({
       editUseTime: Boolean(item.due_time),
       editSubmitting: false,
     });
+    var self = this;
+    setTimeout(function() {
+      if (self.data.editVisible) self.setData({ sheetOpen: true });
+    }, 20);
   },
 
   onMaskTap(event) {
@@ -231,11 +254,24 @@ Page({
     this.cancelEdit();
   },
 
-  noop() {},
-
   cancelEdit() {
     if (this.data.editSubmitting) return;
-    this.setData({ editVisible: false, editTodoId: null });
+    this._closeSheet();
+  },
+
+  // 先播离场过渡，结束后再卸载节点（节点直接移除无法播放退出动画）
+  _closeSheet() {
+    if (!this.data.editVisible || this.data.sheetClosing) return;
+    this.setData({ sheetOpen: false, sheetClosing: true });
+    var self = this;
+    this._sheetTimer = setTimeout(function() {
+      self._sheetTimer = null;
+      self.setData({
+        editVisible: false,
+        sheetClosing: false,
+        editTodoId: null,
+      });
+    }, SHEET_TRANSITION_MS);
   },
 
   onEditContentInput(event) {
@@ -250,8 +286,9 @@ Page({
     this.setData({ editTime: event.detail.value });
   },
 
-  onEditUseTimeChange(event) {
-    this.setData({ editUseTime: event.detail.value });
+  onEditTimeToggle() {
+    this.setData({ editUseTime: !this.data.editUseTime });
+    wx.vibrateShort({ type: "light" });
   },
 
   async submitEdit() {
@@ -268,7 +305,8 @@ Page({
         due_date: this.data.editDate,
         due_time: this.data.editUseTime ? this.data.editTime : null,
       });
-      this.setData({ editSubmitting: false, editVisible: false, editTodoId: null });
+      this.setData({ editSubmitting: false });
+      this._closeSheet();
       this._toast("已保存");
       this.loadList();
     } catch (error) {

@@ -369,7 +369,7 @@
     bindtap="onMaskTap"
   >
     <view
-      class="edit-sheet edit-sheet--{{sheetMode}}"
+      class="edit-sheet"
       style="transform: translateY({{sheetTranslateY}}px);"
     >
       <view
@@ -382,10 +382,7 @@
       </view>
 
       <view class="sheet-head">
-        <view class="sheet-head-copy">
-          <text class="sheet-title">{{sheetMode === 'reminder' ? '设置提醒' : '编辑待办'}}</text>
-          <text class="sheet-subtitle">{{sheetMode === 'reminder' ? '选择接收微信提醒的时间' : '调整待办内容和安排'}}</text>
-        </view>
+        <text class="sheet-title">{{sheetMode === 'reminder' ? '设置提醒' : '编辑待办'}}</text>
         <button class="sheet-close" bindtap="cancelEdit" aria-label="关闭">
           <image class="sheet-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
         </button>
@@ -421,10 +418,7 @@
                   <view class="setting-icon-wrap">
                     <image class="setting-icon" src="/assets/icons/png/calendar_month.png" mode="aspectFit" />
                   </view>
-                  <view class="setting-copy">
-                    <text class="setting-title">日期</text>
-                    <text class="setting-caption">待办到期日期</text>
-                  </view>
+                  <text class="setting-title">日期</text>
                 </view>
                 <view class="setting-value-wrap">
                   <text class="setting-value">{{editDate}}</text>
@@ -440,10 +434,7 @@
                 <view class="setting-icon-wrap">
                   <image class="setting-icon" src="/assets/icons/png/schedule.png" mode="aspectFit" />
                 </view>
-                <view class="setting-copy">
-                  <text class="setting-title">具体时间</text>
-                  <text class="setting-caption">{{editUseTime ? '已设置具体时间' : '不设置具体时间'}}</text>
-                </view>
+                <text class="setting-title">具体时间</text>
               </view>
               <view class="sheet-switch {{editUseTime ? 'sheet-switch--on' : ''}}">
                 <view class="sheet-switch-thumb"></view>

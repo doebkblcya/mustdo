@@ -10,7 +10,7 @@
 
   <view class="notice-bar">
     <image class="notice-icon" src="/assets/icons/png/info.png" mode="aspectFit" />
-    <text>已删除和逾期事项最多保留 7 天</text>
+    <text>删除与逾期待办保留 7 天</text>
   </view>
 
   <view class="trash-tabs">
@@ -23,14 +23,22 @@
   </view>
 
   <view class="trash-content">
-    <view wx:if="{{loading}}" class="empty-state">
-      <image class="loading-spinner" src="/assets/icons/png/progress_activity.png" mode="aspectFit" />
-      <text class="empty-desc">加载中…</text>
+    <view wx:if="{{loading}}" class="trash-skeleton-list" aria-label="正在加载">
+      <view wx:for="{{[0, 1, 2]}}" wx:key="*this" class="trash-skeleton-card">
+        <view class="trash-skeleton-copy">
+          <view class="trash-skeleton-line trash-skeleton-line--title"></view>
+          <view class="trash-skeleton-line trash-skeleton-line--meta"></view>
+        </view>
+        <view class="trash-skeleton-action"></view>
+      </view>
     </view>
 
-    <view wx:elif="{{error}}" class="empty-state">
-      <text class="empty-desc">{{error}}</text>
-      <button class="retry-button" bindtap="loadList">重试</button>
+    <view wx:elif="{{error}}" class="empty-state empty-state--error">
+      <view class="error-icon-shell">
+        <image class="error-icon" src="/assets/icons/png/error_red.png" mode="aspectFit" />
+      </view>
+      <text class="empty-desc">{{error || '加载失败'}}</text>
+      <button class="retry-button retry-button--primary" bindtap="loadList">重试</button>
     </view>
 
     <view wx:elif="{{items.length === 0}}" class="empty-state">
@@ -51,7 +59,9 @@
 
         <view wx:else class="trash-item-actions trash-item-actions--overdue">
           <button class="action-btn action-btn--primary" data-id="{{item.id}}" bindtap="onMoveToday">移到今天</button>
-          <button class="action-btn" data-id="{{item.id}}" bindtap="onEdit">编辑</button>
+          <button class="action-btn action-btn--icon" data-id="{{item.id}}" bindtap="onEdit" aria-label="编辑">
+            <image class="action-icon" src="/assets/icons/png/edit.png" mode="aspectFit" />
+          </button>
           <button class="action-btn action-btn--icon" data-id="{{item.id}}" bindtap="onToggleDone" aria-label="完成">
             <image class="action-icon" src="/assets/icons/png/done.png" mode="aspectFit" />
           </button>
@@ -63,41 +73,90 @@
     </view>
   </view>
 
-  <view wx:if="{{editVisible}}" class="sheet-mask" catchtouchmove="noop" bindtap="onMaskTap">
+  <view
+    wx:if="{{editVisible}}"
+    class="sheet-mask {{sheetOpen ? 'sheet-mask--open' : ''}}"
+    bindtap="onMaskTap"
+  >
     <view class="edit-sheet">
+      <view class="sheet-handle-area">
+        <view class="sheet-handle"></view>
+      </view>
+
       <view class="sheet-head">
-        <text class="sheet-title">修改待办</text>
+        <text class="sheet-title">编辑待办</text>
         <button class="sheet-close" bindtap="cancelEdit" aria-label="关闭">
           <image class="sheet-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
         </button>
       </view>
 
-      <input
-        class="edit-field"
-        value="{{editContent}}"
-        placeholder="待办内容"
-        placeholder-class="edit-placeholder"
-        confirm-type="done"
-        bindinput="onEditContentInput"
-      />
+      <scroll-view class="sheet-scroll" scroll-y="{{true}}" enhanced="{{true}}" show-scrollbar="{{false}}">
+        <view class="sheet-scroll-content">
+          <view class="sheet-section">
+            <text class="sheet-section-label">待办内容</text>
+            <input
+              class="edit-task-field"
+              value="{{editContent}}"
+              placeholder="输入待办内容"
+              placeholder-class="edit-placeholder"
+              confirm-type="done"
+              cursor-spacing="24"
+              bindinput="onEditContentInput"
+            />
+          </view>
 
-      <view class="edit-row">
-        <text class="edit-label">日期</text>
-        <picker mode="date" value="{{editDate}}" start="{{todayDate}}" bindchange="onEditDateChange">
-          <view class="picker-value">{{editDate}}</view>
-        </picker>
+          <view class="sheet-section">
+            <text class="sheet-section-label">安排</text>
+            <view class="schedule-card">
+              <picker mode="date" value="{{editDate}}" start="{{todayDate}}" bindchange="onEditDateChange">
+                <view class="sheet-setting-row">
+                  <view class="setting-leading">
+                    <view class="setting-icon-wrap">
+                      <image class="setting-icon" src="/assets/icons/png/calendar_month.png" mode="aspectFit" />
+                    </view>
+                    <text class="setting-title">日期</text>
+                  </view>
+                  <view class="setting-value-wrap">
+                    <text class="setting-value">{{editDate}}</text>
+                    <image class="setting-chevron" src="/assets/icons/png/chevron_right.png" mode="aspectFit" />
+                  </view>
+                </view>
+              </picker>
+
+              <view class="sheet-divider"></view>
+
+              <view class="sheet-setting-row" bindtap="onEditTimeToggle">
+                <view class="setting-leading">
+                  <view class="setting-icon-wrap">
+                    <image class="setting-icon" src="/assets/icons/png/schedule.png" mode="aspectFit" />
+                  </view>
+                  <text class="setting-title">具体时间</text>
+                </view>
+                <view class="sheet-switch {{editUseTime ? 'sheet-switch--on' : ''}}">
+                  <view class="sheet-switch-thumb"></view>
+                </view>
+              </view>
+
+              <block wx:if="{{editUseTime}}">
+                <view class="sheet-divider sheet-divider--indented"></view>
+                <picker mode="time" value="{{editTime}}" bindchange="onEditTimeChange">
+                  <view class="sheet-setting-row sheet-setting-row--time">
+                    <text class="setting-title">时间</text>
+                    <view class="setting-value-wrap">
+                      <text class="setting-value setting-value--strong">{{editTime}}</text>
+                      <image class="setting-chevron" src="/assets/icons/png/chevron_right.png" mode="aspectFit" />
+                    </view>
+                  </view>
+                </picker>
+              </block>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view class="sheet-footer">
+        <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存修改</button>
       </view>
-
-      <view class="edit-row">
-        <text class="edit-label">时间</text>
-        <switch checked="{{editUseTime}}" color="#000000" bindchange="onEditUseTimeChange" />
-      </view>
-
-      <picker wx:if="{{editUseTime}}" mode="time" value="{{editTime}}" bindchange="onEditTimeChange">
-        <view class="time-picker">{{editTime}}</view>
-      </picker>
-
-      <button class="save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存</button>
     </view>
   </view>
 </view>

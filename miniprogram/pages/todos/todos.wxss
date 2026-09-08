@@ -1,3 +1,5 @@
+@import "../../styles/sheet.wxss";
+
 /*
  * Todos — Main list & interactions
  * Stitch rebuild: flat page, underline tabs, pill task cards.
@@ -1107,73 +1109,6 @@ page {
    Edit bottom sheet
    ================================================================ */
 
-.sheet-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(16rpx);
-  -webkit-backdrop-filter: blur(16rpx);
-}
-
-.edit-sheet {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 92vh;
-  max-height: 92vh;
-  overflow: hidden;
-  padding: 0 40rpx;
-  border-radius: 96rpx 96rpx 0 0;
-  background: #f9f9f9;
-  box-sizing: border-box;
-  box-shadow: 0 -16rpx 60rpx rgba(0, 0, 0, 0.12);
-}
-
-.sheet-handle-area {
-  display: flex;
-  justify-content: center;
-  padding: 20rpx 0 24rpx;
-}
-
-.sheet-handle {
-  width: 64rpx;
-  height: 8rpx;
-  border-radius: 9999rpx;
-  background: #dadada;
-}
-
-.sheet-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24rpx;
-  margin-bottom: 24rpx;
-}
-
-.sheet-scroll {
-  flex: 1;
-  min-height: 0;
-  height: 0;
-  width: 100%;
-}
-
-.sheet-scroll-content {
-  padding: 16rpx 0 24rpx;
-}
-
-.sheet-footer {
-  flex: 0 0 auto;
-  padding: 24rpx 0 24rpx;
-  padding-bottom: calc(24rpx + constant(safe-area-inset-bottom));
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-}
-
-.sheet-head-copy,
-.setting-copy,
 .remind-summary-copy,
 .remind-custom-copy {
   display: flex;
@@ -1181,82 +1116,10 @@ page {
   flex-direction: column;
 }
 
-.sheet-title {
-  color: #000000;
-  font-size: 40rpx;
-  font-weight: 600;
-  line-height: 50rpx;
-  letter-spacing: -0.02em;
-}
-
-.sheet-subtitle {
-  margin-top: 8rpx;
-  color: #5d5e63;
-  font-size: 26rpx;
-  line-height: 36rpx;
-}
-
-.sheet-close {
-  display: flex;
-  align-items: center;
-  flex: 0 0 64rpx;
-  justify-content: center;
-  width: 64rpx;
-  height: 64rpx;
-  margin: 0;
-  padding: 0;
-  border-radius: 50%;
-  background: #eeeeee;
-}
-
-.sheet-close::after,
 .remind-cancel::after {
   display: none;
 }
 
-.sheet-close:active {
-  transform: scale(0.96);
-  opacity: 0.7;
-  transition: transform 80ms ease-out;
-}
-
-.sheet-section + .sheet-section {
-  margin-top: 40rpx;
-}
-
-.sheet-section-label {
-  display: block;
-  margin: 0 16rpx 16rpx;
-  color: #5d5e63;
-  font-size: 24rpx;
-  font-weight: 600;
-  line-height: 32rpx;
-  letter-spacing: 0.04em;
-}
-
-.edit-task-field {
-  width: 100%;
-  height: 112rpx;
-  padding: 0 40rpx;
-  border: 1rpx solid transparent;
-  border-radius: 64rpx;
-  background: #f3f3f4;
-  box-sizing: border-box;
-  color: #000000;
-  font-size: 34rpx;
-  line-height: 44rpx;
-}
-
-.edit-task-field:focus {
-  background: #eeeeee;
-}
-
-.edit-placeholder {
-  color: rgba(76, 69, 70, 0.5);
-  font-size: 34rpx;
-}
-
-.schedule-card,
 .remind-options {
   overflow: hidden;
   border-radius: 64rpx;
@@ -1264,45 +1127,17 @@ page {
   box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.04);
 }
 
-.setting-picker {
-  display: block;
-}
-
-.sheet-setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 120rpx;
-  padding: 16rpx 32rpx;
-  box-sizing: border-box;
-}
-
-.sheet-setting-row:active,
 .remind-option:active,
 .remind-custom-field:active {
   opacity: 0.65;
 }
 
-.sheet-setting-row--time {
-  min-height: 96rpx;
-  padding-left: 104rpx;
-}
-
-.setting-leading,
-.setting-value-wrap,
 .remind-option-end,
 .remind-summary {
   display: flex;
   align-items: center;
 }
 
-.setting-leading {
-  min-width: 0;
-  flex: 1;
-  gap: 24rpx;
-}
-
-.setting-icon-wrap,
 .remind-summary-icon-wrap {
   display: flex;
   align-items: center;
@@ -1314,103 +1149,11 @@ page {
   background: #eeeeee;
 }
 
-.setting-icon,
 .remind-summary-icon {
   display: block;
   width: 32rpx;
   height: 32rpx;
   opacity: 0.72;
-}
-
-.setting-title,
-.setting-caption {
-  display: block;
-}
-
-.setting-title {
-  color: #1a1c1c;
-  font-size: 30rpx;
-  line-height: 40rpx;
-}
-
-.setting-caption {
-  margin-top: 2rpx;
-  color: #5d5e63;
-  font-size: 24rpx;
-  line-height: 32rpx;
-}
-
-.setting-value-wrap {
-  flex: 0 0 auto;
-  gap: 4rpx;
-  margin-left: 16rpx;
-}
-
-.setting-value {
-  color: #5d5e63;
-  font-size: 26rpx;
-  line-height: 36rpx;
-}
-
-.setting-value--strong {
-  color: #000000;
-  font-size: 30rpx;
-}
-
-.setting-chevron {
-  display: block;
-  width: 32rpx;
-  height: 32rpx;
-  opacity: 0.42;
-}
-
-.sheet-divider {
-  height: 1rpx;
-  margin-left: 104rpx;
-  background: #e2e2e2;
-}
-
-.sheet-divider--indented {
-  margin-left: 104rpx;
-}
-
-.sheet-switch {
-  position: relative;
-  flex: 0 0 auto;
-  width: 88rpx;
-  height: 52rpx;
-  border-radius: 9999rpx;
-  background: #e2e2e2;
-  transition: background 160ms ease;
-}
-
-.sheet-switch-thumb {
-  position: absolute;
-  top: 4rpx;
-  left: 4rpx;
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.14);
-  transition: transform 160ms ease;
-}
-
-.sheet-switch--on {
-  background: #000000;
-}
-
-.sheet-switch--on .sheet-switch-thumb {
-  transform: translateX(36rpx);
-}
-
-.save-button {
-  height: 112rpx;
-  margin-top: 0;
-  border-radius: 64rpx;
-  font-size: 34rpx;
-  font-weight: 600;
-  line-height: 112rpx;
 }
 
 .remind-summary {
@@ -1756,8 +1499,7 @@ page {
   height: 44rpx;
 }
 
-.resize-icon,
-.sheet-close-icon {
+.resize-icon {
   display: block;
   position: static;
   width: 32rpx;

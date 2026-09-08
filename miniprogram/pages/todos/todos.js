@@ -1190,6 +1190,8 @@ Page({
   },
 
   _measureAndOpenSheet() {
+    // 弹层高度随内容自适应，首帧先放到屏幕外，避免沿用上一次的高度闪一下
+    this.setData({ sheetTranslateY: 9999, maskOpacity: 0 });
     // Wait for DOM render
     setTimeout(() => {
       const query = wx.createSelectorQuery();
@@ -1352,10 +1354,6 @@ Page({
 
   onEditTimeChange(event) {
     this.setData({ editTime: event.detail.value });
-  },
-
-  onEditUseTimeChange(event) {
-    this.setData({ editUseTime: event.detail.value });
   },
 
   onEditTimeToggle() {
