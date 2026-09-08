@@ -294,6 +294,7 @@ cd backend && uv run python scripts/cleanup_overdue.py
 - [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode/)
 - 详细架构文档：[docs/PROJECT.md](docs/PROJECT.md)
 - ASR 选型决策记录：[docs/voice-asr-analysis.md](docs/voice-asr-analysis.md)
+- 小程序动画与视觉效果调研：[docs/miniprogram-animation-visual-effects.md](docs/miniprogram-animation-visual-effects.md)
 - AI 辅助开发约定：[CLAUDE.md](CLAUDE.md)
 
 ## 许可
