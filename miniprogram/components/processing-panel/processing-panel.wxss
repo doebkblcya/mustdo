@@ -5,20 +5,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40rpx;
+  padding: 24rpx;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(16rpx);
-  -webkit-backdrop-filter: blur(16rpx);
+  background: rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(10rpx);
+  -webkit-backdrop-filter: blur(10rpx);
 }
 
 .processing-panel {
   width: 100%;
-  max-height: 82vh;
-  padding: 48rpx;
-  border-radius: 64rpx;
+  max-height: calc(100vh - 48rpx);
+  padding: 32rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.06);
+  border-radius: 48rpx;
   background: #f9f9f9;
-  box-shadow: 0 16rpx 60rpx rgba(0, 0, 0, 0.12);
+  box-shadow: 0 20rpx 72rpx rgba(0, 0, 0, 0.18);
   box-sizing: border-box;
   color: #1a1c1c;
 }
@@ -34,7 +35,7 @@
 
 .panel-header {
   justify-content: space-between;
-  margin-bottom: 32rpx;
+  margin-bottom: 24rpx;
 }
 
 .panel-title {
@@ -48,15 +49,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   margin: 0;
   padding: 0;
   border-radius: 50%;
   background: #eeeeee;
   color: #5d5e63;
   font-size: 36rpx;
-  line-height: 56rpx;
+  line-height: 64rpx;
 }
 
 .panel-close::after,
@@ -259,13 +260,13 @@
   min-height: 92rpx;
   max-height: 180rpx;
   margin-top: 20rpx;
-  padding: 24rpx 36rpx;
+  padding: 28rpx 32rpx;
   border: 1rpx solid rgba(0, 0, 0, 0.06);
-  border-radius: 48rpx;
+  border-radius: 36rpx;
   background: #ffffff;
   color: #000000;
-  font-size: 26rpx;
-  line-height: 40rpx;
+  font-size: 30rpx;
+  line-height: 44rpx;
   box-sizing: border-box;
 }
 
@@ -280,11 +281,11 @@
 
 .review-item {
   margin-bottom: 20rpx;
-  padding: 24rpx 36rpx;
-  border-radius: 48rpx;
+  padding: 24rpx 28rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  border-radius: 36rpx;
   background: #ffffff;
   box-sizing: border-box;
-  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.03);
 }
 
 .item-main-row {
@@ -334,7 +335,7 @@
   align-items: center;
   gap: 8rpx;
   padding: 40rpx 24rpx;
-  border-radius: 48rpx;
+  border-radius: 36rpx;
   background: #ffffff;
   color: #5d5e63;
   font-size: 26rpx;
@@ -377,7 +378,7 @@
 }
 
 .error-message {
-  margin-top: 20rpx;
+  margin-top: 16rpx;
   color: #000000;
   font-size: 30rpx;
   font-weight: 600;
@@ -394,7 +395,8 @@
   width: 100%;
   margin-top: 24rpx;
   padding: 24rpx 28rpx;
-  border-radius: 32rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  border-radius: 36rpx;
   background: #ffffff;
   box-sizing: border-box;
 }
@@ -458,7 +460,7 @@
 
 .error-symbol {
   display: block;
-  width: 80rpx;
-  height: 80rpx;
+  width: 64rpx;
+  height: 64rpx;
   background: transparent;
 }

@@ -2,7 +2,7 @@
   <scroll-view class="processing-panel" scroll-y="{{true}}">
     <view wx:if="{{panel.phase === 'reviewing' || panel.phase === 'error'}}" class="panel-header">
       <text class="panel-title">
-        {{panel.phase === 'reviewing' ? '确认待办' : '处理遇到问题'}}
+        {{panel.phase === 'reviewing' ? '确认待办' : '处理失败'}}
       </text>
       <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">
         <image class="panel-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
@@ -93,7 +93,7 @@
       <image class="error-symbol" src="/assets/icons/png/error_red.png" mode="aspectFit" />
       <text class="error-message">{{panel.message}}</text>
       <view wx:if="{{panel.transcript}}" class="preserved-copy">
-        <text class="preserved-label">已保留原文</text>
+        <text class="preserved-label">原文</text>
         <text class="preserved-text">{{panel.transcript}}</text>
       </view>
       <view wx:if="{{panel.errorStep === 'saving' && panel.items.length}}" class="preserved-copy preserved-items">
