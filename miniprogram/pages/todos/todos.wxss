@@ -16,17 +16,10 @@ page {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 0 0 calc(160rpx + constant(safe-area-inset-bottom));
-  padding: 0 0 calc(160rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #f9f9f9;
   color: #1a1c1c;
   overflow: hidden;
-}
-
-.todos-page--composer-tall {
-  padding-bottom: calc(280rpx + constant(safe-area-inset-bottom));
-  padding-bottom: calc(280rpx + env(safe-area-inset-bottom));
 }
 
 /* ================================================================
@@ -316,7 +309,13 @@ page {
   flex-direction: column;
   gap: 32rpx;
   margin-top: 40rpx;
-  padding-bottom: 40rpx;
+  padding-bottom: calc(184rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(184rpx + env(safe-area-inset-bottom));
+}
+
+.todos-page--composer-tall .todo-list {
+  padding-bottom: calc(300rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(300rpx + env(safe-area-inset-bottom));
 }
 
 /* ---- Swipe wrapper ---- */
