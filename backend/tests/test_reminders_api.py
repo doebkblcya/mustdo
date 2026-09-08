@@ -82,7 +82,12 @@ class ReminderApiTests(unittest.TestCase):
         finally:
             db.close()
 
-    def _seed_todo(self, user_id: int, due_time: str | None = "14:30") -> int:
+    def _seed_todo(
+        self,
+        user_id: int,
+        due_time: str | None = "14:30",
+        due_date: str | None = None,
+    ) -> int:
         now = utcish_now_iso()
         db = get_connection()
         try:
@@ -91,12 +96,16 @@ class ReminderApiTests(unittest.TestCase):
                 INSERT INTO todos (user_id, content, due_date, due_time, status, created_at, updated_at)
                 VALUES (?, 'API 待办', ?, ?, 'pending', ?, ?)
                 """,
-                (user_id, today_date().isoformat(), due_time, now, now),
+                (user_id, due_date or today_date().isoformat(), due_time, now, now),
             )
             db.commit()
             return int(cursor.lastrowid)
         finally:
             db.close()
+
+    def _future_due(self, days: int = 2) -> tuple[str, str]:
+        """足够远的未来截止时刻，保证提醒区间 (now, due] 非空。"""
+        return (today_date() + timedelta(days=days)).isoformat(), "23:00"
 
     def _auth(self) -> dict[str, str]:
         return {"Authorization": "Bearer " + TOKEN}
@@ -110,16 +119,30 @@ class ReminderApiTests(unittest.TestCase):
 
     def test_put_creates_reminder(self) -> None:
         user_id = self._seed_user_with_session()
-        todo_id = self._seed_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._seed_todo(user_id, due_date=due_date, due_time=due_time)
+        remind_at = f"{due_date}T14:30:00+08:00"
         resp = self.client.put(
             f"/api/todos/{todo_id}/reminder",
-            json={"remind_at": "2099-08-25T14:30:00+08:00"},
+            json={"remind_at": remind_at},
             headers=self._auth(),
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["reminder"]["status"], "pending")
-        self.assertEqual(body["reminder"]["remind_at"], "2099-08-25T14:30:00+08:00")
+        self.assertEqual(body["reminder"]["remind_at"], remind_at)
+
+    def test_put_rejects_after_due(self) -> None:
+        user_id = self._seed_user_with_session()
+        due_date, due_time = self._future_due()
+        todo_id = self._seed_todo(user_id, due_date=due_date, due_time=due_time)
+        resp = self.client.put(
+            f"/api/todos/{todo_id}/reminder",
+            json={"remind_at": f"{due_date}T23:30:00+08:00"},
+            headers=self._auth(),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["code"], "reminder_after_due")
 
     def test_put_requires_due_time(self) -> None:
         user_id = self._seed_user_with_session()
@@ -183,21 +206,22 @@ class ReminderApiTests(unittest.TestCase):
 
     def test_list_includes_reminder_and_delete_clears_it(self) -> None:
         user_id = self._seed_user_with_session()
-        todo_id = self._seed_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._seed_todo(user_id, due_date=due_date, due_time=due_time)
         self.client.put(
             f"/api/todos/{todo_id}/reminder",
-            json={"remind_at": "2099-08-25T14:30:00+08:00"},
+            json={"remind_at": f"{due_date}T14:30:00+08:00"},
             headers=self._auth(),
         )
         listed = self.client.get("/api/todos", headers=self._auth()).json()
-        todo = next(t for t in listed["groups"]["today"] if t["id"] == todo_id)
+        todo = next(t for t in listed["groups"]["upcoming"] if t["id"] == todo_id)
         self.assertIsNotNone(todo["reminder"])
         self.assertEqual(todo["reminder"]["status"], "pending")
 
         resp = self.client.delete(f"/api/todos/{todo_id}/reminder", headers=self._auth())
         self.assertEqual(resp.status_code, 204)
         listed2 = self.client.get("/api/todos", headers=self._auth()).json()
-        todo2 = next(t for t in listed2["groups"]["today"] if t["id"] == todo_id)
+        todo2 = next(t for t in listed2["groups"]["upcoming"] if t["id"] == todo_id)
         self.assertIsNone(todo2["reminder"])
         db = get_connection()
         try:
@@ -210,10 +234,11 @@ class ReminderApiTests(unittest.TestCase):
 
     def test_patch_done_through_http_cancels_reminder(self) -> None:
         user_id = self._seed_user_with_session()
-        todo_id = self._seed_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._seed_todo(user_id, due_date=due_date, due_time=due_time)
         self.client.put(
             f"/api/todos/{todo_id}/reminder",
-            json={"remind_at": "2099-08-25T14:30:00+08:00"},
+            json={"remind_at": f"{due_date}T14:30:00+08:00"},
             headers=self._auth(),
         )
         patched = self.client.patch(

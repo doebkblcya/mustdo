@@ -72,7 +72,12 @@ class ReminderTests(unittest.TestCase):
         finally:
             db.close()
 
-    def _create_todo(self, user_id: int, due_time: str | None = "14:30") -> int:
+    def _create_todo(
+        self,
+        user_id: int,
+        due_time: str | None = "14:30",
+        due_date: str | None = None,
+    ) -> int:
         now = now_shanghai().isoformat(timespec="seconds")
         db = get_connection()
         try:
@@ -81,12 +86,16 @@ class ReminderTests(unittest.TestCase):
                 INSERT INTO todos (user_id, content, due_date, due_time, status, created_at, updated_at)
                 VALUES (?, '测试提醒', ?, ?, 'pending', ?, ?)
                 """,
-                (user_id, today_date().isoformat(), due_time, now, now),
+                (user_id, due_date or today_date().isoformat(), due_time, now, now),
             )
             db.commit()
             return int(cursor.lastrowid)
         finally:
             db.close()
+
+    def _future_due(self, days: int = 2) -> tuple[str, str]:
+        """足够远的未来截止时刻：保证提醒区间 (now, due] 非空，且用例与运行时刻无关。"""
+        return (today_date() + timedelta(days=days)).isoformat(), "23:00"
 
     def _insert_reminder(self, user_id: int, todo_id: int, remind_at: str) -> None:
         db = get_connection()
@@ -164,26 +173,51 @@ class ReminderTests(unittest.TestCase):
             db.close()
         self.assertEqual(raised.exception.detail["code"], "todo_not_found")
 
-    def test_upsert_creates_and_overwrites(self) -> None:
+    def test_upsert_rejects_after_due(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            first = upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            with self.assertRaises(HTTPException) as raised:
+                upsert_reminder(db, user_id, todo_id, f"{due_date}T23:30:00+08:00")
+        finally:
+            db.close()
+        self.assertEqual(raised.exception.detail["code"], "reminder_after_due")
+
+    def test_upsert_allows_exactly_due(self) -> None:
+        user_id = self._create_user()
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            reminder = upsert_reminder(db, user_id, todo_id, f"{due_date}T{due_time}:00+08:00")
+        finally:
+            db.close()
+        self.assertEqual(reminder.remind_at, f"{due_date}T{due_time}:00+08:00")
+
+    def test_upsert_creates_and_overwrites(self) -> None:
+        user_id = self._create_user()
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            first = upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             self.assertEqual(first.status, "pending")
-            second = upsert_reminder(db, user_id, todo_id, "2099-08-25T15:00:00+08:00")
+            second = upsert_reminder(db, user_id, todo_id, f"{due_date}T15:00:00+08:00")
             rows = db.execute("SELECT COUNT(*) AS count FROM todo_reminders").fetchone()["count"]
             self.assertEqual(rows, 1)
-            self.assertEqual(second.remind_at, "2099-08-25T15:00:00+08:00")
+            self.assertEqual(second.remind_at, f"{due_date}T15:00:00+08:00")
         finally:
             db.close()
 
     def test_cancel_reminder_sets_cancelled(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             cancel_reminder(db, user_id, todo_id)
             self.assertIsNone(get_reminder(db, todo_id))
             status = db.execute(
@@ -197,24 +231,26 @@ class ReminderTests(unittest.TestCase):
 
     def test_list_includes_reminder_summary(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             groups = list_grouped_todos(db, user_id).groups
-            todo = next(t for t in groups.today if t.id == todo_id)
+            todo = next(t for t in groups.upcoming if t.id == todo_id)
             self.assertIsNotNone(todo.reminder)
-            self.assertEqual(todo.reminder.remind_at, "2099-08-25T14:30:00+08:00")
+            self.assertEqual(todo.reminder.remind_at, f"{due_date}T14:30:00+08:00")
             self.assertEqual(todo.reminder.status, "pending")
         finally:
             db.close()
 
     def test_patch_due_time_cancels_reminder(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             updated = update_todo(db, user_id, todo_id, {"due_time": "16:00"})
             self.assertIsNone(updated.reminder)
             status = db.execute(
@@ -226,10 +262,11 @@ class ReminderTests(unittest.TestCase):
 
     def test_patch_status_done_cancels_reminder(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             update_todo(db, user_id, todo_id, {"status": "done"})
             status = db.execute(
                 "SELECT status FROM todo_reminders WHERE todo_id = ?", (todo_id,)
@@ -240,10 +277,11 @@ class ReminderTests(unittest.TestCase):
 
     def test_soft_delete_cancels_reminder(self) -> None:
         user_id = self._create_user()
-        todo_id = self._create_todo(user_id)
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
         db = get_connection()
         try:
-            upsert_reminder(db, user_id, todo_id, "2099-08-25T14:30:00+08:00")
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
             self.assertTrue(soft_delete_todo(db, user_id, todo_id))
             status = db.execute(
                 "SELECT status FROM todo_reminders WHERE todo_id = ?", (todo_id,)

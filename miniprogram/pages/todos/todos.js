@@ -180,6 +180,9 @@ Page({
     remindSelected: 0,
     remindCustomDate: "",
     remindCustomTime: "",
+    // 提醒上限：待办的截止日期/时间，自定义提醒不得晚于它
+    remindMaxDate: "",
+    remindMaxTime: "",
     remindSubmitting: false,
     remindHasActive: false,
 
@@ -1423,7 +1426,8 @@ Page({
       wx.showToast({ title: "剩余时间不足，无法设置提醒", icon: "none" });
       return;
     }
-    const customDefault = new Date(now.getTime() + 3600000);
+    // 自定义默认值：now + 1 小时，但不能晚于待办截止时刻（提醒晚于截止没有意义）
+    const customDefault = new Date(Math.min(now.getTime() + 3600000, base.getTime()));
     options.push({ label: "自定义日期和时间", invalid: false, timeText: "", value: "" });
     this.setData({
       sheetMode: "reminder",
@@ -1435,10 +1439,18 @@ Page({
       remindSelected: 0,
       remindCustomDate: toDateStr(customDefault),
       remindCustomTime: toTimeStr(customDefault),
+      remindMaxDate: todo.due_date,
+      remindMaxTime: todo.due_time,
       remindSubmitting: false,
       remindHasActive: Boolean(todo.reminder),
     });
     this._measureAndOpenSheet();
+  },
+
+  // 待办截止时刻（提醒允许的最晚时间）
+  _remindMaxAt() {
+    if (!this.data.remindMaxDate || !this.data.remindMaxTime) return null;
+    return dateTimeToDate(this.data.remindMaxDate, this.data.remindMaxTime);
   },
 
   onRemindOptionTap(event) {
@@ -1450,15 +1462,51 @@ Page({
       wx.showToast({ title: "剩余时间不足，无法" + opt.label, icon: "none" });
       return;
     }
+    if (idx === REMIND_CUSTOM_INDEX) {
+      // 切到自定义时，把越界（已过去 / 晚于截止）的值夹回合法区间
+      const now = new Date();
+      const maxAt = this._remindMaxAt();
+      const customAt = dateTimeToDate(this.data.remindCustomDate, this.data.remindCustomTime);
+      if (!(customAt > now) || (maxAt && customAt > maxAt)) {
+        const upper = maxAt && maxAt > now ? maxAt : new Date(now.getTime() + 3600000);
+        const fallback = new Date(Math.min(now.getTime() + 3600000, upper.getTime()));
+        this.setData({
+          remindSelected: idx,
+          remindCustomDate: toDateStr(fallback),
+          remindCustomTime: toTimeStr(fallback),
+        });
+        return;
+      }
+    }
     this.setData({ remindSelected: idx });
   },
 
   onRemindCustomDateChange(event) {
-    this.setData({ remindCustomDate: event.detail.value });
+    const date = event.detail.value;
+    const maxDate = this.data.remindMaxDate;
+    // 选择器已用 end 限制，这里兜底并处理跨到上限当天时的时间越界
+    if (maxDate && date > maxDate) {
+      wx.showToast({ title: "提醒时间不能晚于待办时间", icon: "none" });
+      return;
+    }
+    if (maxDate && date === maxDate && this.data.remindCustomTime > this.data.remindMaxTime) {
+      this.setData({ remindCustomDate: date, remindCustomTime: this.data.remindMaxTime });
+      return;
+    }
+    this.setData({ remindCustomDate: date });
   },
 
   onRemindCustomTimeChange(event) {
-    this.setData({ remindCustomTime: event.detail.value });
+    const time = event.detail.value;
+    if (
+      this.data.remindMaxTime &&
+      this.data.remindCustomDate === this.data.remindMaxDate &&
+      time > this.data.remindMaxTime
+    ) {
+      wx.showToast({ title: "提醒时间不能晚于待办时间", icon: "none" });
+      return;
+    }
+    this.setData({ remindCustomTime: time });
   },
 
   submitReminder() {
@@ -1474,6 +1522,11 @@ Page({
       const t = parseIso(remindAt);
       if (!t || t <= new Date()) {
         wx.showToast({ title: "提醒时间必须晚于当前时间", icon: "none" });
+        return;
+      }
+      const maxAt = this._remindMaxAt();
+      if (maxAt && t > maxAt) {
+        wx.showToast({ title: "提醒时间不能晚于待办时间", icon: "none" });
         return;
       }
     } else {

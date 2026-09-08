@@ -489,7 +489,7 @@
         </view>
 
         <view wx:if="{{remindSelected === remindOptions.length - 1}}" class="remind-custom">
-          <picker class="remind-custom-picker" mode="date" value="{{remindCustomDate}}" start="{{todayDate}}" bindchange="onRemindCustomDateChange">
+          <picker class="remind-custom-picker" mode="date" value="{{remindCustomDate}}" start="{{todayDate}}" end="{{remindMaxDate}}" bindchange="onRemindCustomDateChange">
             <view class="remind-custom-field">
               <image class="remind-custom-icon" src="/assets/icons/png/calendar_month.png" mode="aspectFit" />
               <view class="remind-custom-copy">
@@ -498,7 +498,7 @@
               </view>
             </view>
           </picker>
-          <picker class="remind-custom-picker" mode="time" value="{{remindCustomTime}}" bindchange="onRemindCustomTimeChange">
+          <picker class="remind-custom-picker" mode="time" value="{{remindCustomTime}}" end="{{remindCustomDate === remindMaxDate ? remindMaxTime : '23:59'}}" bindchange="onRemindCustomTimeChange">
             <view class="remind-custom-field">
               <image class="remind-custom-icon" src="/assets/icons/png/schedule.png" mode="aspectFit" />
               <view class="remind-custom-copy">

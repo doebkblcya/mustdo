@@ -30,6 +30,13 @@ def normalize_remind_at(value: datetime) -> str:
     return value.isoformat(timespec="seconds")
 
 
+def _due_local_iso(due_date: str, due_time: str) -> str:
+    """todo 截止时刻的本地 ISO 字符串，便于与 ``remind_at`` 直接比较。"""
+    tz = get_settings().tzinfo
+    value = datetime.fromisoformat(f"{due_date}T{due_time}:00").replace(tzinfo=tz)
+    return value.isoformat(timespec="seconds")
+
+
 def _row_to_reminder(row: sqlite3.Row) -> ReminderPublic:
     return ReminderPublic(
         remind_at=row["remind_at"],
@@ -47,7 +54,8 @@ def upsert_reminder(
     """Create or replace the todo's reminder.
 
     Validates ownership, non-deleted state, pending status, an explicit
-    ``due_time`` and a future ``remind_at``. Overwrites any existing row
+    ``due_time`` and a ``remind_at`` inside ``(now, due]`` —— 提醒晚于截止时刻
+    没有意义（那时待办已经过期）。Overwrites any existing row
     (todo_id is UNIQUE), which enforces 「每条待办同时保留一个有效提醒」.
     """
     row = db.execute(
@@ -62,6 +70,12 @@ def upsert_reminder(
         raise_api_error(status.HTTP_400_BAD_REQUEST, "reminder_requires_time", "请先设置明确时间")
     if remind_at <= utcish_now_iso():
         raise_api_error(status.HTTP_400_BAD_REQUEST, "reminder_time_in_past", "提醒时间必须晚于当前时间")
+    if remind_at > _due_local_iso(row["due_date"], row["due_time"]):
+        raise_api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "reminder_after_due",
+            "提醒时间不能晚于待办时间",
+        )
 
     now = utcish_now_iso()
     db.execute(

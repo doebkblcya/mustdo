@@ -70,6 +70,13 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 
 **排序**：`(not pinned?, done?, no_time?, time_or_empty, id)` — 置顶优先→pending 优先→有时间优先→时间升序→无时间→id 升序
 
+### 提醒
+- 仅「未完成 + 有明确时间（`due_time` 非空）」的待办可设提醒；每条待办同时只保留一个有效提醒（`todo_reminders.todo_id` UNIQUE，upsert 覆盖）
+- **提醒时间必须落在 `(现在, 待办截止时刻]`**：晚于截止时刻的提醒没有意义。前端自定义选择器用 `start/end` 限制 + 提交前校验，后端 `upsert_reminder` 兜底返回 `reminder_after_due`；「准时提醒」预设 = 正好等于截止时刻，属于合法上界
+- 自定义默认值是 `now + 1 小时`，但会被夹到截止时刻以内
+- 联动取消：完成 / 软删 / 改 `due_date` / 改 `due_time` 都会把提醒置为 `cancelled`
+- 路由：`PUT /api/todos/{id}/reminder`（设置/覆盖）、`DELETE /api/todos/{id}/reminder`（取消）
+
 ### API 路由
 
 | 方法 | 路径 | 说明 |
