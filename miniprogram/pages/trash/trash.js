@@ -254,6 +254,8 @@ Page({
     this.cancelEdit();
   },
 
+  noop() {},
+
   cancelEdit() {
     if (this.data.editSubmitting) return;
     this._closeSheet();
