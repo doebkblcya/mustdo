@@ -10,11 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from sqladmin import Admin
+from starlette.staticfiles import StaticFiles
 
+from app.admin.application import MustdoAdmin
 from app.admin.audit import JsonAuditBackend
 from app.admin.auth import AdminAuth
 from app.admin.engine import create_admin_engine
+from app.admin.hub_views import DiagnosticsView, UsageCenterView, UserDetailView, UsersHubView
 from app.admin.invite_create_view import InviteCreateView
 from app.admin.summary_view import UsageSummaryView
 from app.admin.usage_history_view import UserUsageView
@@ -34,6 +36,7 @@ from app.admin.views import (
 # doesn't break when uvicorn is launched from elsewhere). File is under
 # backend/templates/, so from app/admin/__init__.py that's parents[2].
 _TEMPLATES_DIR = str(Path(__file__).resolve().parents[2] / "templates")
+_STATIC_DIR = str(Path(__file__).resolve().parents[2] / "static" / "admin")
 
 
 def mount_admin(app: FastAPI) -> None:
@@ -46,7 +49,13 @@ def mount_admin(app: FastAPI) -> None:
     engine, session_maker = create_admin_engine()
     _ = engine  # kept alive for the session_maker's bind; session_maker is what SQLAdmin uses.
 
-    admin = Admin(
+    app.mount(
+        "/admin-assets",
+        StaticFiles(directory=_STATIC_DIR),
+        name="admin-assets",
+    )
+
+    admin = MustdoAdmin(
         app,
         session_maker=session_maker,
         authentication_backend=AdminAuth(),
@@ -58,6 +67,10 @@ def mount_admin(app: FastAPI) -> None:
     )
 
     for view in (
+        UsersHubView,
+        UserDetailView,
+        UsageCenterView,
+        DiagnosticsView,
         UserView,
         UserQuotaView,
         TodoView,

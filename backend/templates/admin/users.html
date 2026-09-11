@@ -1,0 +1,39 @@
+{% extends "sqladmin/layout.html" %}
+{% block content_header %}
+<div class="mustdo-page-heading">
+  <div><h1>用户管理</h1><p>把身份、今日用量、配额和业务状态放在同一处查看</p></div>
+  <div class="md-page-actions"><a class="btn btn-primary" href="{{ request.url_for('admin:view-invite-create') }}"><i class="fa-solid fa-plus me-1"></i>新建邀请码</a></div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="md-card">
+  <form class="md-toolbar" method="get">
+    <div class="md-filters">
+      <div class="md-field search"><label for="user-search">搜索用户</label><input class="form-control" id="user-search" type="search" name="q" value="{{ result.query }}" placeholder="用户 ID 或 OpenID"></div>
+      <div class="md-field"><label for="user-status">状态</label><select class="form-select" id="user-status" name="status"><option value="all">全部状态</option><option value="active" {% if result.status == 'active' %}selected{% endif %}>正常</option><option value="disabled" {% if result.status == 'disabled' %}selected{% endif %}>已停用</option></select></div>
+      <div class="md-field"><label for="user-usage">今日用量</label><select class="form-select" id="user-usage" name="usage"><option value="all">全部用户</option><option value="today" {% if result.usage == 'today' %}selected{% endif %}>今日活跃</option><option value="near" {% if result.usage == 'near' %}selected{% endif %}>接近限额</option></select></div>
+      <div class="md-field"><label for="user-sort">排序</label><select class="form-select" id="user-sort" name="sort"><option value="active" {% if result.sort == 'active' %}selected{% endif %}>最近活跃</option><option value="created" {% if result.sort == 'created' %}selected{% endif %}>最近注册</option><option value="asr" {% if result.sort == 'asr' %}selected{% endif %}>ASR 用量</option><option value="ai" {% if result.sort == 'ai' %}selected{% endif %}>AI 用量</option><option value="todos" {% if result.sort == 'todos' %}selected{% endif %}>待办数量</option><option value="id" {% if result.sort == 'id' %}selected{% endif %}>用户 ID</option></select></div>
+      <button class="btn btn-primary" type="submit">筛选</button>
+      {% if result.query or result.status != 'all' or result.usage != 'all' %}<a class="btn btn-ghost-secondary" href="{{ request.url_for('admin:view-users-hub') }}">清除</a>{% endif %}
+    </div>
+    <div class="md-toolbar-count">共 {{ result.count }} 位</div>
+  </form>
+  {% if result['items'] %}
+  <div class="md-table-wrap"><table class="md-table"><thead><tr><th>用户</th><th>状态</th><th>今日 ASR</th><th>今日 AI</th><th class="num">待办</th><th>提醒</th><th>最近活跃</th><th></th></tr></thead><tbody>
+  {% for item in result['items'] %}
+    <tr>
+      <td><div class="md-user-cell"><span class="md-avatar">{{ item.user_id }}</span><div><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">用户 #{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></div></div></td>
+      <td>{% if item.status == 'active' %}<span class="md-badge good">正常</span>{% else %}<span class="md-badge danger">已停用</span>{% endif %}{% if not item.asr_enabled %}<div class="md-muted mt-1">ASR 已关闭</div>{% endif %}{% if not item.ai_enabled %}<div class="md-muted mt-1">AI 已关闭</div>{% endif %}</td>
+      <td>{% if item.asr_limit > 0 %}<div class="md-progress-label"><span>{{ "%.1f"|format(item.asr_used) }} 秒</span><span>/ {{ "%.0f"|format(item.asr_limit) }}</span></div><div class="md-progress"><span class="{% if item.asr_ratio >= 100 %}danger{% elif item.asr_ratio >= 80 %}warn{% endif %}" style="width:{{ item.asr_ratio }}%"></span></div>{% else %}<strong>{{ "%.1f"|format(item.asr_used) }}</strong> <span class="md-muted">秒 · 不限</span>{% endif %}</td>
+      <td>{% if item.ai_limit > 0 %}<div class="md-progress-label"><span>{{ "{:,}".format(item.ai_used) }}</span><span>/ {{ "{:,}".format(item.ai_limit) }}</span></div><div class="md-progress"><span class="{% if item.ai_ratio >= 100 %}danger{% elif item.ai_ratio >= 80 %}warn{% endif %}" style="width:{{ item.ai_ratio }}%"></span></div>{% else %}<strong>{{ "{:,}".format(item.ai_used) }}</strong> <span class="md-muted">Token · 不限</span>{% endif %}</td>
+      <td class="num"><strong>{{ item.todo_pending }}</strong><div class="md-muted">共 {{ item.todo_total }}</div></td>
+      <td class="nowrap">{{ item.reminder_sent }} 已发{% if item.reminder_failed %}<div class="md-danger">{{ item.reminder_failed }} 失败</div>{% endif %}</td>
+      <td class="nowrap">{% if item.last_login_at %}{{ item.last_login_at[:16]|replace('T',' ') }}{% else %}<span class="md-muted">尚未登录</span>{% endif %}</td>
+      <td><a class="btn btn-sm btn-outline-primary" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">详情</a></td>
+    </tr>
+  {% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="md-empty">没有符合当前条件的用户</div>{% endif %}
+  <div class="md-pagination"><span>第 {{ result.page }} / {{ result.pages }} 页</span><div class="md-pagination-links"><a class="{% if not result.has_prev %}disabled{% endif %}" href="{{ request.url.include_query_params(page=result.page - 1) }}">上一页</a><a class="{% if not result.has_next %}disabled{% endif %}" href="{{ request.url.include_query_params(page=result.page + 1) }}">下一页</a></div></div>
+</section>
+{% endblock %}

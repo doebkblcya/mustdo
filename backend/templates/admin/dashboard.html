@@ -1,0 +1,67 @@
+{% extends "sqladmin/layout.html" %}
+{% block content_header %}
+<div class="mustdo-page-heading">
+  <div><h1>运营概览</h1><p>{{ dashboard.window_label }}的服务状态、用量和需要处理的异常</p></div>
+  <div class="md-periods" aria-label="时间范围">
+    {% for value, label in [(1, '今天'), (7, '7 天'), (30, '30 天'), (0, '全部')] %}
+    <a class="{% if dashboard.days == value %}active{% endif %}" href="{{ request.url.include_query_params(days=value) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="md-stat-grid" aria-label="核心指标">
+  <div class="md-card md-stat"><div class="md-stat-label">活跃用户</div><div class="md-stat-value">{{ dashboard.users.active }}</div><div class="md-stat-foot"><span>共 {{ dashboard.users.total }} 位</span><span>{{ dashboard.users.enabled }} 位可用</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">ASR 用量</div><div class="md-stat-value">{{ "%.1f"|format(dashboard.asr.seconds / 60) }}<small> 分钟</small></div><div class="md-stat-foot"><span>{{ dashboard.asr.calls }} 次调用</span><span>平均 {{ dashboard.asr.avg_ms }} ms</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">AI 用量</div><div class="md-stat-value">{{ "{:,}".format(dashboard.ai.tokens) }}</div><div class="md-stat-foot"><span>{{ dashboard.ai.calls }} 次调用</span><span>平均 {{ dashboard.ai.avg_ms }} ms</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">提醒异常</div><div class="md-stat-value {% if dashboard.reminders.failed %}md-danger{% endif %}">{{ dashboard.reminders.failed }}</div><div class="md-stat-foot"><span>{{ dashboard.reminders.sent }} 已发送</span><span>{{ dashboard.reminders.pending }} 待发送</span></div></div>
+</section>
+
+<section class="md-section md-dashboard-grid">
+  <div class="md-card">
+    <div class="md-panel-head"><h2>近期开销趋势</h2><div class="md-legend"><span>ASR 秒数</span><span>AI Token</span></div></div>
+    <div class="md-panel-body">
+      <div class="md-trend" style="--trend-count: {{ dashboard.trend|length }}">
+        {% for d in dashboard.trend %}
+        <div class="md-trend-day" title="{{ d.day }} · ASR {{ d.asr_seconds }} 秒 · AI {{ d.ai_tokens }} Token">
+          <div class="md-trend-bars">
+            <span class="md-trend-bar" style="height: {{ [2, (d.asr_seconds / dashboard.trend_asr_max * 100)|round|int]|max }}%"></span>
+            <span class="md-trend-bar ai" style="height: {{ [2, (d.ai_tokens / dashboard.trend_ai_max * 100)|round|int]|max }}%"></span>
+          </div>
+          <span class="md-trend-label">{{ d.day[5:] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="md-card">
+    <div class="md-panel-head"><h2>最近提醒失败</h2><a href="{{ request.url_for('admin:view-diagnostics').include_query_params(kind='reminders', status='failed') }}">查看全部</a></div>
+    <div class="md-panel-body">
+      {% if dashboard.failures %}<ul class="md-feed">
+      {% for item in dashboard.failures %}
+        <li><span class="md-feed-icon"><i class="fa-solid fa-bell-slash"></i></span><div class="md-feed-content"><div class="md-feed-title">{{ item.content }}</div><div class="md-feed-meta">用户 #{{ item.user_id }} · {{ item.error_label }} · {{ item.updated_at[:16]|replace('T', ' ') }}</div></div></li>
+      {% endfor %}
+      </ul>{% else %}<div class="md-empty">暂时没有提醒失败，运行正常</div>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="md-section md-dashboard-grid">
+  <div class="md-card">
+    <div class="md-panel-head"><h2>活跃用户排行</h2><a href="{{ request.url_for('admin:view-users-hub') }}">全部用户</a></div>
+    {% if dashboard.top_users %}<div class="md-table-wrap"><table class="md-table"><thead><tr><th>用户</th><th class="num">调用</th><th class="num">ASR 秒数</th><th class="num">AI Token</th></tr></thead><tbody>
+    {% for item in dashboard.top_users %}<tr><td><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">#{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></td><td class="num">{{ item.calls }}</td><td class="num">{{ "%.1f"|format(item.asr_seconds) }}</td><td class="num">{{ "{:,}".format(item.ai_tokens) }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="md-empty">该时间范围内没有服务调用</div>{% endif %}
+  </div>
+  <div class="md-card">
+    <div class="md-panel-head"><h2>接近今日限额</h2><a href="{{ request.url_for('admin:view-users-hub').include_query_params(usage='near') }}">筛选用户</a></div>
+    <div class="md-panel-body">
+      {% if dashboard.quota_alerts %}<ul class="md-feed">
+      {% for item in dashboard.quota_alerts %}
+        <li><span class="md-feed-icon" style="background:var(--md-warn-soft);color:var(--md-warn)"><i class="fa-solid fa-gauge-high"></i></span><div class="md-feed-content"><div class="md-feed-title"><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">用户 #{{ item.user_id }}</a></div><div class="md-feed-meta">ASR {{ item.asr_ratio }}% · AI {{ item.ai_ratio }}%</div></div></li>
+      {% endfor %}
+      </ul>{% else %}<div class="md-empty">目前没有用户接近限额</div>{% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

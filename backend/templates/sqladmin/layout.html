@@ -1,0 +1,92 @@
+{% extends "sqladmin/base.html" %}
+{% set current_path = request.url.path.rstrip('/') %}
+{% block body %}
+<div class="mustdo-admin-shell">
+  <aside class="mustdo-sidebar" aria-label="后台导航">
+    <a class="mustdo-brand" href="{{ request.url_for('admin:index') }}">
+      <span class="mustdo-brand-mark"><i class="fa-solid fa-check"></i></span>
+      <span><strong>Mustdo</strong><small>管理后台</small></span>
+    </a>
+    <nav class="mustdo-nav">
+      <div class="mustdo-nav-label">工作台</div>
+      <a class="mustdo-nav-item {% if current_path == '/admin' %}active{% endif %}" href="{{ request.url_for('admin:index') }}">
+        <i class="fa-solid fa-table-cells-large"></i><span>运营概览</span>
+      </a>
+      <a class="mustdo-nav-item {% if current_path.startswith('/admin/users') %}active{% endif %}" href="{{ request.url_for('admin:view-users-hub') }}">
+        <i class="fa-solid fa-users"></i><span>用户</span>
+      </a>
+      <a class="mustdo-nav-item {% if current_path == '/admin/usage' %}active{% endif %}" href="{{ request.url_for('admin:view-usage-center') }}">
+        <i class="fa-solid fa-chart-line"></i><span>用量</span>
+      </a>
+      <a class="mustdo-nav-item {% if '/invite' in current_path %}active{% endif %}" href="{{ request.url_for('admin:list', identity='invite-code') }}">
+        <i class="fa-solid fa-ticket"></i><span>邀请码</span>
+      </a>
+      <div class="mustdo-nav-label">排查</div>
+      <a class="mustdo-nav-item {% if current_path == '/admin/diagnostics' %}active{% endif %}" href="{{ request.url_for('admin:view-diagnostics') }}">
+        <i class="fa-solid fa-stethoscope"></i><span>诊断中心</span>
+      </a>
+      <details class="mustdo-raw-nav" {% if current_path.startswith('/admin/asr-usage') or current_path.startswith('/admin/ai-usage') or current_path.startswith('/admin/todo') %}open{% endif %}>
+        <summary><i class="fa-solid fa-database"></i><span>原始数据</span><i class="fa-solid fa-chevron-down"></i></summary>
+        <a href="{{ request.url_for('admin:list', identity='asr-usage') }}">ASR 请求</a>
+        <a href="{{ request.url_for('admin:list', identity='ai-usage') }}">AI 请求</a>
+        <a href="{{ request.url_for('admin:list', identity='todo') }}">待办记录</a>
+        <a href="{{ request.url_for('admin:list', identity='todo-reminder') }}">提醒记录</a>
+      </details>
+      <div class="mustdo-nav-label">系统</div>
+      <a class="mustdo-nav-item {% if current_path.startswith('/admin/admin-audit-log') %}active{% endif %}" href="{{ request.url_for('admin:list', identity='admin-audit-log') }}">
+        <i class="fa-solid fa-clipboard-list"></i><span>操作审计</span>
+      </a>
+      <a class="mustdo-nav-item {% if current_path.startswith('/admin/admin/') %}active{% endif %}" href="{{ request.url_for('admin:list', identity='admin') }}">
+        <i class="fa-solid fa-shield-halved"></i><span>管理员</span>
+      </a>
+    </nav>
+    <div class="mustdo-sidebar-footer">
+      <div class="mustdo-admin-person">
+        <span class="mustdo-admin-avatar">{{ (request.session.get('username') or 'A')[:1]|upper }}</span>
+        <span><strong>{{ request.session.get('username') or '管理员' }}</strong><small>管理员</small></span>
+      </div>
+      <a class="mustdo-logout" href="{{ request.url_for('admin:logout') }}" title="退出登录"><i class="fa-solid fa-right-from-bracket"></i></a>
+    </div>
+  </aside>
+  <main class="mustdo-main">
+    <header class="mustdo-mobile-header">
+      <a class="mustdo-brand compact" href="{{ request.url_for('admin:index') }}"><span class="mustdo-brand-mark"><i class="fa-solid fa-check"></i></span><strong>Mustdo</strong></a>
+      <button type="button" class="mustdo-menu-button" aria-label="打开导航" data-admin-menu-toggle><i class="fa-solid fa-bars"></i></button>
+    </header>
+    <div class="mustdo-page">
+      {% block content_header %}
+      <div class="mustdo-page-heading"><div><h1>{{ title or admin.title }}</h1>{% if subtitle %}<p>{{ subtitle }}</p>{% endif %}</div></div>
+      {% endblock %}
+      {% block content %}{% endblock %}
+      {% block flash %}{% include 'sqladmin/flash.html' %}{% endblock %}
+      {% block secret_modal %}{% include 'sqladmin/secret_modal.html' %}{% endblock %}
+    </div>
+  </main>
+</div>
+<div class="mustdo-menu-backdrop" data-admin-menu-backdrop></div>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script>
+(() => {
+  const toggle = document.querySelector('[data-admin-menu-toggle]');
+  const backdrop = document.querySelector('[data-admin-menu-backdrop]');
+  const close = () => document.body.classList.remove('mustdo-menu-open');
+  if (toggle && backdrop) {
+    toggle.addEventListener('click', () => document.body.classList.toggle('mustdo-menu-open'));
+    backdrop.addEventListener('click', close);
+    window.addEventListener('resize', () => { if (window.innerWidth > 900) close(); });
+  }
+  document.querySelectorAll('[data-copy-value]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyValue || '');
+        const old = button.innerHTML;
+        button.innerHTML = '<i class="fa-solid fa-check"></i> 已复制';
+        setTimeout(() => { button.innerHTML = old; }, 1600);
+      } catch (_) {}
+    });
+  });
+})();
+</script>
+{% endblock %}

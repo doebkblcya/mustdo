@@ -1,0 +1,10 @@
+{% extends "sqladmin_original/base.html" %}
+{% block head_meta %}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+{% endblock %}
+{% block head_tail %}
+{{ super() }}
+<link rel="stylesheet" href="{{ request.url_for('admin-assets', path='admin.css') }}">
+{% endblock %}

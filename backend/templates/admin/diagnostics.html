@@ -1,0 +1,28 @@
+{% extends "sqladmin/layout.html" %}
+{% block content_header %}
+<div class="mustdo-page-heading"><div><h1>诊断中心</h1><p>关联查看用户、待办和提醒状态，快速定位异常</p></div></div>
+{% endblock %}
+{% block content %}
+<div class="md-tabs">
+  <a class="{% if result.kind == 'reminders' %}active{% endif %}" href="{{ request.url.include_query_params(kind='reminders', status='all', page=1) }}">提醒</a>
+  <a class="{% if result.kind == 'todos' %}active{% endif %}" href="{{ request.url.include_query_params(kind='todos', status='all', page=1) }}">待办</a>
+</div>
+<section class="md-card">
+  <form class="md-toolbar" method="get">
+    <input type="hidden" name="kind" value="{{ result.kind }}">
+    <div class="md-filters">
+      <div class="md-field search"><label for="diag-search">搜索</label><input id="diag-search" class="form-control" type="search" name="q" value="{{ result.query }}" placeholder="待办内容、用户 ID 或 OpenID"></div>
+      <div class="md-field"><label for="diag-status">状态</label><select id="diag-status" class="form-select" name="status"><option value="all">全部状态</option>{% if result.kind == 'reminders' %}<option value="pending" {% if result.status == 'pending' %}selected{% endif %}>待发送</option><option value="sent" {% if result.status == 'sent' %}selected{% endif %}>已发送</option><option value="failed" {% if result.status == 'failed' %}selected{% endif %}>发送失败</option><option value="cancelled" {% if result.status == 'cancelled' %}selected{% endif %}>已取消</option>{% else %}<option value="pending" {% if result.status == 'pending' %}selected{% endif %}>未完成</option><option value="done" {% if result.status == 'done' %}selected{% endif %}>已完成</option><option value="deleted" {% if result.status == 'deleted' %}selected{% endif %}>已删除</option>{% endif %}</select></div>
+      <button class="btn btn-primary" type="submit">筛选</button>
+      {% if result.query or result.status != 'all' %}<a class="btn btn-ghost-secondary" href="{{ request.url_for('admin:view-diagnostics').include_query_params(kind=result.kind) }}">清除</a>{% endif %}
+    </div><div class="md-toolbar-count">共 {{ result.count }} 条</div>
+  </form>
+  {% if result['items'] %}<div class="md-table-wrap"><table class="md-table">
+  {% if result.kind == 'reminders' %}
+    <thead><tr><th>待办</th><th>用户</th><th>提醒时间</th><th>状态</th><th>发送/更新时间</th><th>错误原因</th></tr></thead><tbody>{% for item in result['items'] %}<tr><td>{{ item.content }}<div class="md-muted">待办 #{{ item.todo_id }}</div></td><td><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">#{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></td><td class="nowrap">{{ item.remind_at[:16]|replace('T',' ') }}</td><td>{% if item.status == 'sent' %}<span class="md-badge good">已发送</span>{% elif item.status == 'failed' %}<span class="md-badge danger">失败</span>{% elif item.status == 'pending' %}<span class="md-badge warn">待发送</span>{% else %}<span class="md-badge">已取消</span>{% endif %}</td><td class="nowrap">{{ (item.sent_at or item.updated_at)[:16]|replace('T',' ') }}</td><td class="{% if item.error_code %}md-danger{% endif %}">{{ item.error_label }}</td></tr>{% endfor %}</tbody>
+  {% else %}
+    <thead><tr><th>内容</th><th>用户</th><th>日期</th><th>状态</th><th>提醒</th><th>最近更新</th></tr></thead><tbody>{% for item in result['items'] %}<tr><td>{{ item.content }}{% if item.pinned %}<div class="md-muted">已置顶</div>{% endif %}</td><td><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">#{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></td><td class="nowrap">{{ item.due_date }}{% if item.due_time %} {{ item.due_time }}{% endif %}</td><td>{% if item.deleted_at %}<span class="md-badge danger">已删除</span>{% elif item.status == 'done' %}<span class="md-badge">已完成</span>{% else %}<span class="md-badge good">未完成</span>{% endif %}</td><td>{{ {'pending':'待发送','sent':'已发送','failed':'失败','cancelled':'已取消'}.get(item.reminder_status, '—') }}</td><td class="nowrap">{{ item.updated_at[:16]|replace('T',' ') }}</td></tr>{% endfor %}</tbody>
+  {% endif %}</table></div>{% else %}<div class="md-empty">没有符合条件的记录</div>{% endif %}
+  <div class="md-pagination"><span>第 {{ result.page }} / {{ result.pages }} 页</span><div class="md-pagination-links"><a class="{% if not result.has_prev %}disabled{% endif %}" href="{{ request.url.include_query_params(page=result.page - 1) }}">上一页</a><a class="{% if not result.has_next %}disabled{% endif %}" href="{{ request.url.include_query_params(page=result.page + 1) }}">下一页</a></div></div>
+</section>
+{% endblock %}

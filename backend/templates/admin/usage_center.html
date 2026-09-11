@@ -1,0 +1,27 @@
+{% extends "sqladmin/layout.html" %}
+{% block content_header %}
+<div class="mustdo-page-heading">
+  <div><h1>用量中心</h1><p>查看外部服务消耗、成功率和用户分布</p></div>
+  <div class="md-periods">{% for value, label in [(1,'今天'),(7,'7 天'),(30,'30 天'),(0,'全部')] %}<a class="{% if dashboard.days == value %}active{% endif %}" href="{{ request.url.include_query_params(days=value) }}">{{ label }}</a>{% endfor %}</div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="md-stat-grid">
+  <div class="md-card md-stat"><div class="md-stat-label">ASR 请求</div><div class="md-stat-value">{{ dashboard.asr.calls }}</div><div class="md-stat-foot"><span>{{ "%.1f"|format(dashboard.asr.seconds / 60) }} 分钟</span><span class="{% if dashboard.asr.failed %}md-danger{% endif %}">{{ dashboard.asr.failed }} 失败</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">AI 请求</div><div class="md-stat-value">{{ dashboard.ai.calls }}</div><div class="md-stat-foot"><span>{{ "{:,}".format(dashboard.ai.tokens) }} Token</span><span class="{% if dashboard.ai.failed %}md-danger{% endif %}">{{ dashboard.ai.failed }} 失败</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">综合成功率</div><div class="md-stat-value">{{ dashboard.success_rate if dashboard.success_rate is not none else '—' }}{% if dashboard.success_rate is not none %}<small>%</small>{% endif %}</div><div class="md-stat-foot"><span>ASR + AI</span><span>{{ dashboard.window_label }}</span></div></div>
+  <div class="md-card md-stat"><div class="md-stat-label">新增待办</div><div class="md-stat-value">{{ dashboard.todos.created }}</div><div class="md-stat-foot"><span>{{ dashboard.todos.pending }} 未完成</span><span>{{ dashboard.todos.done }} 已完成</span></div></div>
+</section>
+
+<section class="md-section md-card">
+  <div class="md-panel-head"><h2>每日用量趋势</h2><div class="md-legend"><span>ASR 秒数</span><span>AI Token</span></div></div>
+  <div class="md-panel-body"><div class="md-trend" style="--trend-count: {{ dashboard.trend|length }}">{% for d in dashboard.trend %}<div class="md-trend-day" title="{{ d.day }} · ASR {{ d.asr_seconds }} 秒 · AI {{ d.ai_tokens }} Token"><div class="md-trend-bars"><span class="md-trend-bar" style="height: {{ [2, (d.asr_seconds / dashboard.trend_asr_max * 100)|round|int]|max }}%"></span><span class="md-trend-bar ai" style="height: {{ [2, (d.ai_tokens / dashboard.trend_ai_max * 100)|round|int]|max }}%"></span></div><span class="md-trend-label">{{ d.day[5:] }}</span></div>{% endfor %}</div></div>
+</section>
+
+<section class="md-section md-detail-grid">
+  <div class="md-card"><div class="md-panel-head"><h2>AI 构成</h2><a href="{{ request.url_for('admin:list', identity='ai-usage') }}">原始明细</a></div><div class="md-panel-body"><div class="md-kpi-row"><div class="md-kpi"><label>新增解析</label><strong>{{ dashboard.ai.parse_calls }}</strong><span class="md-muted">次调用</span></div><div class="md-kpi"><label>动态整理</label><strong>{{ dashboard.ai.organize_calls }}</strong><span class="md-muted">次调用</span></div><div class="md-kpi"><label>输入 / 输出</label><strong>{{ "{:,}".format(dashboard.ai.prompt_tokens) }}</strong><span class="md-muted">/ {{ "{:,}".format(dashboard.ai.completion_tokens) }} Token</span></div></div></div></div>
+  <div class="md-card"><div class="md-panel-head"><h2>服务性能</h2><a href="{{ request.url_for('admin:list', identity='asr-usage') }}">ASR 明细</a></div><div class="md-panel-body"><dl class="md-detail-list"><div><dt>ASR 平均耗时</dt><dd>{{ dashboard.asr.avg_ms }} ms</dd></div><div><dt>AI 平均耗时</dt><dd>{{ dashboard.ai.avg_ms }} ms</dd></div><div><dt>提醒发送</dt><dd>{{ dashboard.reminders.sent }} 成功</dd></div><div><dt>提醒失败</dt><dd class="{% if dashboard.reminders.failed %}md-danger{% endif %}">{{ dashboard.reminders.failed }}</dd></div></dl></div></div>
+</section>
+
+<section class="md-section md-card"><div class="md-panel-head"><h2>用户用量排行</h2><a href="{{ request.url_for('admin:view-users-hub') }}">用户管理</a></div>{% if dashboard.top_users %}<div class="md-table-wrap"><table class="md-table"><thead><tr><th>用户</th><th class="num">总调用</th><th class="num">ASR 秒数</th><th class="num">AI Token</th><th></th></tr></thead><tbody>{% for item in dashboard.top_users %}<tr><td><div class="md-user-cell"><span class="md-avatar">{{ item.user_id }}</span><div><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">用户 #{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></div></div></td><td class="num">{{ item.calls }}</td><td class="num">{{ "%.1f"|format(item.asr_seconds) }}</td><td class="num">{{ "{:,}".format(item.ai_tokens) }}</td><td><a href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id).include_query_params(days=dashboard.days) }}">查看详情</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="md-empty">该时间范围内没有用量记录</div>{% endif %}</section>
+{% endblock %}

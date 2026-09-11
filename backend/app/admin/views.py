@@ -59,6 +59,8 @@ class UserView(ModelView, model=User):
     column_searchable_list: ClassVar[list[str]] = ["wechat_openid"]
     column_sortable_list: ClassVar[list[str]] = ["id", "created_at", "status"]
     column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
     can_create = False
     can_edit = False
@@ -117,12 +119,16 @@ class UserQuotaView(ModelView, model=UserQuota):
     }
     # 0 表示不限；负数无意义（会被解释为“不限额”）——表单层直接拒绝。
     form_args: ClassVar[dict[str, dict]] = {
-        "asr_daily_seconds": {"validators": [NumberRange(min=0, max=24 * 3600, message="ASR 每日时长不能为负")]},
+        "asr_daily_seconds": {
+            "validators": [NumberRange(min=0, max=24 * 3600, message="ASR 每日时长不能为负")]
+        },
         "ai_daily_tokens": {"validators": [NumberRange(min=0, message="AI 每日Token限额不能为负")]},
     }
     can_create = True
     can_edit = True
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
 
 class AsrUsageView(ModelView, model=AsrUsage):
@@ -139,6 +145,7 @@ class AsrUsageView(ModelView, model=AsrUsage):
         "request_id",
         "audio_seconds",
         "status",
+        "error_code",
         "duration_ms",
         "created_at",
     ]
@@ -148,6 +155,7 @@ class AsrUsageView(ModelView, model=AsrUsage):
         "request_id": "上游请求ID",
         "audio_seconds": "音频时长(秒)",
         "status": "状态",
+        "error_code": "错误码",
         "duration_ms": "耗时(ms)",
         "created_at": "录音时间",
     }
@@ -163,6 +171,13 @@ class AsrUsageView(ModelView, model=AsrUsage):
     can_create = False
     can_edit = False
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "status": lambda obj, _: {"success": "成功", "silence": "静音", "failed": "失败"}.get(
+            obj.status, obj.status
+        ),
+    }
 
 
 class AiUsageView(ModelView, model=AiUsage):
@@ -183,6 +198,7 @@ class AiUsageView(ModelView, model=AiUsage):
         "total_tokens",
         "cache_hit_tokens",
         "cache_miss_tokens",
+        "error_code",
         "duration_ms",
         "created_at",
     ]
@@ -196,6 +212,7 @@ class AiUsageView(ModelView, model=AiUsage):
         "total_tokens": "总Token",
         "cache_hit_tokens": "缓存命中Token",
         "cache_miss_tokens": "缓存未命中Token",
+        "error_code": "错误码",
         "duration_ms": "耗时(ms)",
         "created_at": "调用时间",
     }
@@ -211,6 +228,14 @@ class AiUsageView(ModelView, model=AiUsage):
     can_create = False
     can_edit = False
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "purpose": lambda obj, _: {"parse": "新增解析", "organize": "动态整理"}.get(
+            obj.purpose, obj.purpose
+        ),
+        "status": lambda obj, _: {"success": "成功", "failed": "失败"}.get(obj.status, obj.status),
+    }
 
 
 class AdminView(ModelView, model=Admin):
@@ -244,6 +269,13 @@ class AdminView(ModelView, model=Admin):
     can_create = False
     can_edit = False
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "status": lambda obj, _: {"active": "正常", "disabled": "已停用"}.get(
+            obj.status, obj.status
+        ),
+    }
 
 
 class InviteCodeView(ModelView, model=InviteCode):
@@ -258,6 +290,7 @@ class InviteCodeView(ModelView, model=InviteCode):
     name_plural = "邀请码"
     icon = "fa-ticket"
     category = "邀请码"
+    list_template = "admin/invite_list.html"
 
     column_list: ClassVar[list[str]] = [
         "id",
@@ -299,6 +332,14 @@ class InviteCodeView(ModelView, model=InviteCode):
     can_create = False
     can_edit = True
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "type": lambda obj, _: {"single": "单次", "multi": "长期"}.get(obj.type, obj.type),
+        "status": lambda obj, _: {"active": "有效", "revoked": "已禁用", "redeemed": "已使用"}.get(
+            obj.status, obj.status
+        ),
+    }
 
 
 class TodoReminderView(ModelView, model=TodoReminder):
@@ -368,6 +409,8 @@ class TodoReminderView(ModelView, model=TodoReminder):
     can_create = False
     can_edit = False
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
 
 class TodoView(ModelView, model=Todo):
@@ -420,7 +463,9 @@ class TodoView(ModelView, model=Todo):
     ]
     column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
     column_formatters: ClassVar[dict[str, object]] = {
-        "status": lambda obj, _: {"pending": "未完成", "done": "已完成"}.get(obj.status, obj.status),
+        "status": lambda obj, _: {"pending": "未完成", "done": "已完成"}.get(
+            obj.status, obj.status
+        ),
         "pinned": lambda obj, _: "是" if obj.pinned else "否",
         "deleted_at": lambda obj, _: "已删除" if obj.deleted_at else "",
     }
@@ -428,6 +473,8 @@ class TodoView(ModelView, model=Todo):
     can_create = False
     can_edit = False
     can_delete = False
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
 
 class AdminAuditLogView(ModelView, model=AdminAuditLog):
@@ -436,7 +483,14 @@ class AdminAuditLogView(ModelView, model=AdminAuditLog):
     icon = "fa-clipboard-list"
     category = "系统"
 
-    column_list: ClassVar[list[str]] = ["id", "username", "action", "target_type", "target_id", "created_at"]
+    column_list: ClassVar[list[str]] = [
+        "id",
+        "username",
+        "action",
+        "target_type",
+        "target_id",
+        "created_at",
+    ]
     column_labels: ClassVar[dict[str, str]] = {
         "id": "ID",
         "username": "管理员",
@@ -445,7 +499,25 @@ class AdminAuditLogView(ModelView, model=AdminAuditLog):
         "target_id": "对象ID",
         "created_at": "时间",
     }
+    column_searchable_list: ClassVar[list[str]] = ["username", "action", "target_type", "target_id"]
     column_sortable_list: ClassVar[list[str]] = ["id", "username", "action", "created_at"]
+    column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
+    column_details_list: ClassVar[list[str]] = [
+        "id",
+        "username",
+        "action",
+        "target_type",
+        "target_id",
+        "detail",
+        "created_at",
+    ]
+    column_formatters: ClassVar[dict[str, object]] = {
+        "action": lambda obj, _: {"create": "创建", "update": "修改", "delete": "删除"}.get(
+            obj.action, obj.action
+        ),
+    }
+    page_size = 25
+    page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
     can_create = False
     can_edit = False

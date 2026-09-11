@@ -1,0 +1,42 @@
+{% extends "sqladmin/layout.html" %}
+{% block content_header %}{% endblock %}
+{% block content %}
+<section class="md-profile">
+  <span class="md-avatar">{{ detail.user.id }}</span>
+  <div><h1>用户 #{{ detail.user.id }}</h1><p>{{ detail.user.openid_masked }} · 注册于 {{ detail.user.created_at[:16]|replace('T',' ') }}</p></div>
+  <div class="md-profile-actions">
+    <a class="btn btn-outline-secondary" href="{{ request.url_for('admin:view-users-hub') }}"><i class="fa-solid fa-arrow-left me-1"></i>返回用户</a>
+    {% if detail.user.quota_id %}<a class="btn btn-primary" href="{{ request.url_for('admin:edit', identity='user-quota', pk=detail.user.quota_id) }}">编辑配额</a>{% else %}<a class="btn btn-primary" href="{{ request.url_for('admin:create', identity='user-quota') }}">创建配额</a>{% endif %}
+  </div>
+</section>
+
+<section class="md-detail-grid">
+  <div class="md-card"><div class="md-panel-head"><h2>账号信息</h2>{% if detail.user.status == 'active' %}<span class="md-badge good">正常</span>{% else %}<span class="md-badge danger">已停用</span>{% endif %}</div><div class="md-panel-body"><dl class="md-detail-list"><div><dt>完整 OpenID</dt><dd>{{ detail.user.wechat_openid }}</dd></div><div><dt>用户 ID</dt><dd>#{{ detail.user.id }}</dd></div><div><dt>最近登录</dt><dd>{{ detail.user.last_login_at[:16]|replace('T',' ') if detail.user.last_login_at else '尚未登录' }}</dd></div><div><dt>邀请绑定</dt><dd>{{ detail.user.invite_redeemed_at[:16]|replace('T',' ') if detail.user.invite_redeemed_at else '未绑定' }}</dd></div></dl></div></div>
+  <div class="md-card"><div class="md-panel-head"><h2>服务与今日配额</h2><span class="md-muted">修改后立即生效</span></div><div class="md-panel-body"><div class="md-kpi-row">
+    <div class="md-kpi"><label>ASR</label><strong class="{% if not detail.user.asr_enabled %}md-danger{% endif %}">{{ '已开启' if detail.user.asr_enabled else '已关闭' }}</strong><span class="md-muted">{% if detail.today %}{{ "%.1f"|format(detail.today.asr_used) }} / {{ "%.0f"|format(detail.user.asr_limit) if detail.user.asr_limit else '不限' }} 秒{% endif %}</span></div>
+    <div class="md-kpi"><label>AI</label><strong class="{% if not detail.user.ai_enabled %}md-danger{% endif %}">{{ '已开启' if detail.user.ai_enabled else '已关闭' }}</strong><span class="md-muted">{% if detail.today %}{{ "{:,}".format(detail.today.ai_used) }} / {{ "{:,}".format(detail.user.ai_limit) if detail.user.ai_limit else '不限' }} Token{% endif %}</span></div>
+    <div class="md-kpi"><label>未完成待办</label><strong>{{ detail.today.todo_pending if detail.today else 0 }}</strong><span class="md-muted">共 {{ detail.today.todo_total if detail.today else 0 }} 条</span></div>
+  </div></div></div>
+</section>
+
+<section class="md-section md-card">
+  <div class="md-panel-head"><h2>历史用量</h2><div class="md-periods">{% for value, label in [(1,'今天'),(7,'7 天'),(30,'30 天'),(0,'全部')] %}<a class="{% if detail.days == value %}active{% endif %}" href="{{ request.url.include_query_params(days=value) }}">{{ label }}</a>{% endfor %}</div></div>
+  <div class="md-panel-body">
+    <div class="md-kpi-row">
+      <div class="md-kpi"><label>ASR 请求</label><strong>{{ detail.usage.asr.calls }}</strong><span class="md-muted">{{ "%.1f"|format(detail.usage.asr.seconds / 60) }} 分钟 · 成功 {{ detail.usage.asr.success }}</span></div>
+      <div class="md-kpi"><label>AI Token</label><strong>{{ "{:,}".format(detail.usage.ai|sum(attribute='total_tokens')) }}</strong><span class="md-muted">{{ detail.usage.ai|sum(attribute='calls') }} 次调用</span></div>
+      <div class="md-kpi"><label>平均 ASR 耗时</label><strong>{{ detail.usage.asr.avg_ms }} ms</strong><span class="md-muted">失败 {{ detail.usage.asr.failed }} 次</span></div>
+    </div>
+    {% if detail.usage.per_day %}<div class="md-table-wrap mt-3"><table class="md-table"><thead><tr><th>日期</th><th class="num">ASR 次数</th><th class="num">ASR 秒数</th><th class="num">AI 次数</th><th class="num">AI Token</th></tr></thead><tbody>{% for day in detail.usage.per_day %}<tr><td>{{ day.day }}</td><td class="num">{{ day.asr_calls }}</td><td class="num">{{ "%.1f"|format(day.asr_seconds) }}</td><td class="num">{{ day.ai_calls }}</td><td class="num">{{ "{:,}".format(day.ai_tokens) }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </div>
+</section>
+
+<section class="md-section md-detail-grid">
+  <div class="md-card"><div class="md-panel-head"><h2>最近待办</h2><a href="{{ request.url_for('admin:view-diagnostics').include_query_params(kind='todos', q=detail.user.id) }}">查看全部</a></div>
+  {% if detail.todos %}<div class="md-table-wrap"><table class="md-table"><thead><tr><th>内容</th><th>计划</th><th>状态</th></tr></thead><tbody>{% for todo in detail.todos[:10] %}<tr><td>{{ todo.content }}{% if todo.pinned %}<span class="md-muted"> · 置顶</span>{% endif %}</td><td class="nowrap">{{ todo.due_date }}{% if todo.due_time %} {{ todo.due_time }}{% endif %}</td><td>{% if todo.deleted_at %}<span class="md-badge danger">已删除</span>{% elif todo.status == 'done' %}<span class="md-badge">已完成</span>{% else %}<span class="md-badge good">未完成</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="md-empty">该用户还没有待办</div>{% endif %}</div>
+  <div class="md-card"><div class="md-panel-head"><h2>最近提醒</h2><a href="{{ request.url_for('admin:view-diagnostics').include_query_params(kind='reminders', q=detail.user.id) }}">查看全部</a></div>
+  {% if detail.reminders %}<div class="md-table-wrap"><table class="md-table"><thead><tr><th>待办</th><th>提醒时间</th><th>状态</th></tr></thead><tbody>{% for item in detail.reminders[:10] %}<tr><td>{{ item.content }}{% if item.error_code %}<div class="md-danger md-muted">{{ item.error_label }}</div>{% endif %}</td><td class="nowrap">{{ item.remind_at[:16]|replace('T',' ') }}</td><td>{% if item.status == 'sent' %}<span class="md-badge good">已发送</span>{% elif item.status == 'failed' %}<span class="md-badge danger">失败</span>{% elif item.status == 'pending' %}<span class="md-badge warn">待发送</span>{% else %}<span class="md-badge">已取消</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="md-empty">该用户还没有提醒</div>{% endif %}</div>
+</section>
+
+{% if detail.audits %}<section class="md-section md-card"><div class="md-panel-head"><h2>最近管理操作</h2></div><div class="md-table-wrap"><table class="md-table"><thead><tr><th>时间</th><th>管理员</th><th>动作</th><th>详情</th></tr></thead><tbody>{% for item in detail.audits %}<tr><td class="nowrap">{{ item.created_at[:16]|replace('T',' ') }}</td><td>{{ item.username or '系统' }}</td><td>{{ item.action }}</td><td><code>{{ item.detail or '—' }}</code></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+{% endblock %}

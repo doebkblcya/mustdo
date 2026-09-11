@@ -1,0 +1,15 @@
+{% extends "sqladmin/base.html" %}
+{% block body %}
+<main class="md-login-shell">
+  <section class="md-login-card">
+    <div class="md-login-brand"><span class="mustdo-brand-mark"><i class="fa-solid fa-check"></i></span><div><strong>Mustdo</strong><small>管理后台</small></div></div>
+    <div class="md-login-copy"><h1>欢迎回来</h1><p>登录后查看用户、服务用量和提醒状态。</p></div>
+    <form action="{{ url_for('admin:login') }}" method="post" autocomplete="off">
+      {% if error %}<div class="md-login-error"><i class="fa-solid fa-circle-exclamation"></i>用户名或密码不正确</div>{% endif %}
+      <div class="mb-3"><label class="form-label" for="username">用户名</label><input id="username" name="username" type="text" class="form-control" autocomplete="username" autofocus required></div>
+      <div class="mb-3"><label class="form-label" for="password">密码</label><input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required></div>
+      <button type="submit" class="btn btn-primary w-100">登录</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

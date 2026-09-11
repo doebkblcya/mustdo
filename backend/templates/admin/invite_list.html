@@ -1,0 +1,7 @@
+{% extends "sqladmin/list.html" %}
+{% block content_header %}
+<div class="mustdo-page-heading">
+  <div><h1>邀请码</h1><p>创建、标记和停用注册邀请码</p></div>
+  <a class="btn btn-primary" href="{{ request.url_for('admin:view-invite-create') }}"><i class="fa-solid fa-plus me-1"></i>新建邀请码</a>
+</div>
+{% endblock %}
