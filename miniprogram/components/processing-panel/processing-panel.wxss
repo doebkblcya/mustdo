@@ -13,6 +13,7 @@
 }
 
 .processing-panel {
+  position: relative;
   width: 100%;
   max-height: calc(100vh - 48rpx);
   padding: 32rpx;
@@ -22,6 +23,10 @@
   box-shadow: 0 20rpx 72rpx rgba(0, 0, 0, 0.18);
   box-sizing: border-box;
   color: #1a1c1c;
+}
+
+.processing-panel--error {
+  animation: error-panel-enter 180ms ease-out both;
 }
 
 .panel-header,
@@ -58,6 +63,18 @@
   color: #5d5e63;
   font-size: 36rpx;
   line-height: 64rpx;
+}
+
+.panel-close--floating {
+  position: absolute;
+  top: 32rpx;
+  right: 32rpx;
+  z-index: 1;
+}
+
+.panel-close:active {
+  opacity: 0.65;
+  transform: scale(0.92);
 }
 
 .panel-close::after,
@@ -362,6 +379,12 @@
   color: #ffffff;
 }
 
+.primary-action:active,
+.secondary-action:active {
+  opacity: 0.9;
+  transform: scale(0.96);
+}
+
 .primary-action[disabled] {
   background: #dadada;
 }
@@ -375,14 +398,37 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 12rpx 8rpx 0;
+}
+
+.error-symbol-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: #eeeeee;
+  animation: error-symbol-enter 220ms 40ms ease-out both;
+}
+
+.error-title {
+  margin-top: 24rpx;
+  color: #000000;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 50rpx;
+  letter-spacing: -0.02em;
+  text-align: center;
 }
 
 .error-message {
-  margin-top: 16rpx;
-  color: #000000;
-  font-size: 30rpx;
-  font-weight: 600;
-  line-height: 42rpx;
+  max-width: 520rpx;
+  margin-top: 12rpx;
+  color: #5d5e63;
+  font-size: 28rpx;
+  font-weight: 400;
+  line-height: 40rpx;
   text-align: center;
 }
 
@@ -460,7 +506,29 @@
 
 .error-symbol {
   display: block;
-  width: 64rpx;
-  height: 64rpx;
+  width: 48rpx;
+  height: 48rpx;
   background: transparent;
+}
+
+@keyframes error-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes error-symbol-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

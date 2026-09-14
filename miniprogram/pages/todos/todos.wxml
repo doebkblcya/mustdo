@@ -234,7 +234,7 @@
     class="input-dock"
   >
     <view
-      class="composer-surface {{recording ? 'composer-surface--recording' : ''}}"
+      class="composer-surface {{recording ? 'composer-surface--recording' : ''}} {{voiceCancelHover ? 'composer-surface--cancel' : ''}}"
       style="transform: translateY({{composerLift}}px);"
     >
       <view
@@ -271,7 +271,15 @@
         bindtouchend="onComposerTouchEnd"
         bindtouchcancel="onComposerTouchCancel"
       >
-        <text class="composer-hold-text">{{recording ? (voiceCancelHover ? '松开取消' : '松开完成，上移取消') : '按住说话'}}</text>
+        <view wx:if="{{recording}}" class="recording-visual" aria-hidden="true">
+          <view class="recording-dot"></view>
+          <view class="recording-wave">
+            <view class="recording-wave-bar recording-wave-bar--1"></view>
+            <view class="recording-wave-bar recording-wave-bar--2"></view>
+            <view class="recording-wave-bar recording-wave-bar--3"></view>
+          </view>
+        </view>
+        <text class="composer-hold-text">{{recording ? (voiceCancelHover ? '松开取消' : '松开完成') : '按住说话'}}</text>
       </view>
 
       <view class="composer-action-group">

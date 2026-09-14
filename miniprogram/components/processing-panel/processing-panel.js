@@ -141,7 +141,7 @@ Component({
         });
         const transcript = (result && result.transcript || "").trim();
         if (!transcript) {
-          this._setError("transcribing", "没有识别到声音，请重新录音", true);
+          this._setError("transcribing", "请靠近麦克风，并在安静环境中再试一次", true);
           return;
         }
         this._patchPanel({ phase: "parsing", transcript });
@@ -226,8 +226,8 @@ Component({
     },
 
     _setError(step, message, rerecordOnly) {
-      this._patchPanel({ phase: "error", errorStep: step, message });
       this.setData({ rerecordOnly: !!rerecordOnly });
+      this._patchPanel({ phase: "error", errorStep: step, message });
     },
 
     retry() {

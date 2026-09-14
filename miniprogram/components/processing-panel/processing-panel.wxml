@@ -1,13 +1,15 @@
 <view wx:if="{{visible}}" class="processing-mask" catchtouchmove="noop">
-  <scroll-view class="processing-panel" scroll-y="{{true}}">
-    <view wx:if="{{panel.phase === 'reviewing' || panel.phase === 'error'}}" class="panel-header">
-      <text class="panel-title">
-        {{panel.phase === 'reviewing' ? '确认待办' : '处理失败'}}
-      </text>
+  <scroll-view class="processing-panel processing-panel--{{panel.phase}}" scroll-y="{{true}}">
+    <view wx:if="{{panel.phase === 'reviewing'}}" class="panel-header">
+      <text class="panel-title">确认待办</text>
       <button wx:if="{{canClose}}" class="panel-close" bindtap="requestClose" aria-label="关闭">
         <image class="panel-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
       </button>
     </view>
+
+    <button wx:if="{{panel.phase === 'error' && canClose}}" class="panel-close panel-close--floating" bindtap="requestClose" aria-label="关闭">
+      <image class="panel-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
+    </button>
 
     <view wx:if="{{panel.phase !== 'reviewing' && panel.phase !== 'error'}}" class="step-list">
       <view wx:for="{{steps}}" wx:key="key" class="step-row step-row--{{item.state}}">
@@ -90,7 +92,10 @@
     </view>
 
     <view wx:elif="{{panel.phase === 'error'}}" class="error-section">
-      <image class="error-symbol" src="/assets/icons/png/error_red.png" mode="aspectFit" />
+      <view class="error-symbol-shell">
+        <image class="error-symbol" src="/assets/icons/png/error_red.png" mode="aspectFit" />
+      </view>
+      <text class="error-title">{{rerecordOnly ? '没有听清' : '处理失败'}}</text>
       <text class="error-message">{{panel.message}}</text>
       <view wx:if="{{panel.transcript}}" class="preserved-copy">
         <text class="preserved-label">原文</text>
@@ -101,7 +106,7 @@
         <text wx:for="{{panel.items}}" wx:key="_key" class="preserved-item">{{item.content}}</text>
       </view>
       <view class="error-actions">
-        <button class="primary-action error-primary" bindtap="retry">{{rerecordOnly ? '重新录音' : '重试'}}</button>
+        <button class="primary-action error-primary" bindtap="retry">{{rerecordOnly ? '再录一次' : '重试'}}</button>
         <button wx:if="{{panel.source === 'voice' && !rerecordOnly}}" class="secondary-action" bindtap="rerecord">重新录音</button>
       </view>
     </view>
