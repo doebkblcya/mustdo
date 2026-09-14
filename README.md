@@ -55,20 +55,6 @@ Mustdo 是一个**语音待办工具**：按住按钮说出想做的事，松手
 
 **客户端不直连第三方 AI 服务。** API key、prompt、音频格式处理、配额校验和入库逻辑全部收在后端，小程序只持有一个 Bearer Token。
 
-## 设计决策
-
-个人项目里更值得写的不是用了哪些库，而是为什么这么选。几个有取舍的决定：
-
-| 决策 | 为什么 | 代价 |
-|---|---|---|
-| **ASR 用同步极速版，不用流式** | 用户说完才需要结果，一条待办几秒内结束；维护 WebSocket 流式会话的复杂度换不来对应的体验提升 | 必须等完整音频上传完才能开始识别，用「松手才上传」把等待藏在用户已经说完之后 |
-| **语音只做新增，不做改删** | 「新增」识别错了删掉即可，改错删错无法挽回。把 LLM 的不确定性限制在**可回滚的操作**里 | 功能上少一块，改删只能手动点 |
-| **DeepSeek 显式关闭 thinking** | 思考模式默认开启，而**开启时 `temperature` 会被静默忽略** —— 不报错，只是输出稳定性脱离控制 | 放弃长链推理，靠 `temperature=0.1` + few-shot 换输出稳定 |
-| **日期语义在服务端实时计算** | 「下周五」依赖今天是哪天。日期不写死在 prompt 里，每次请求按 Asia/Shanghai 动态注入 | 每次调用的 prompt 都不同，无法做 prompt 级缓存 |
-| **session token 只存 HMAC-SHA256 hash** | 数据库泄露不等于登录态泄露；禁用用户时其已签发的 session 立即失效 | 无法用 token 反查用户，排查问题要多一步 |
-| **SQLite 是有意的边界，不是将就** | 单机、读多写少，WAL 模式足够；这个规模下引入独立数据库只增加运维负担 | 明确不可水平扩展。多端同步被列为远期议题，而非当前目标 |
-| **统一错误模型 `{code, message, details}`** | `code` 稳定，供前端状态机与测试断言依赖；`message` 是可直接展示的中文文案 | 需要在错误层做集中映射，不能随手抛裸异常 |
-
 ## 功能概览
 
 | 功能 | 说明 |
@@ -82,37 +68,6 @@ Mustdo 是一个**语音待办工具**：按住按钮说出想做的事，松手
 | **提醒** | 仅未完成且带具体时间的待办可设提醒，提醒时刻须落在 `(现在, 截止时刻]` |
 | **置顶与删除** | 右滑置顶、左滑删除（弹回 + 确认防误删），乐观更新 + 失败回滚 |
 | **AI 整理** | 对今日待办智能分组，结果本地缓存，集合未变则不发请求 |
-
-## 快速开始
-
-### 后端
-
-```bash
-cd backend
-cp .env.example .env          # 填入火山引擎和 DeepSeek 的 API Key
-uv sync
-uv run python scripts/init_db.py
-uv run uvicorn app.main:app --reload
-```
-
-后台运行：`scripts/server.sh start`（另支持 `stop | restart | status | logs`）
-
-### `.env` 必需配置
-
-```bash
-SECRET_KEY=change-me-in-production   # 用于签名 session token
-VOLC_API_KEY=                        # 火山引擎语音识别
-DEEPSEEK_API_KEY=                    # DeepSeek 解析
-
-DEFAULT_ASR_TOTAL_SECONDS=1200       # 新用户默认额度，0 表示不限
-DEFAULT_AI_TOTAL_TOKENS=300000
-```
-
-其余配置项见 `backend/.env.example`。
-
-### 小程序
-
-用微信开发者工具打开 `miniprogram/`，在 `config.js` 中填入后端地址。
 
 ## 技术栈
 
