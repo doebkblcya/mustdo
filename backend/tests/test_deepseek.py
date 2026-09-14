@@ -78,7 +78,7 @@ class DeepSeekParserTests(unittest.TestCase):
             os.environ,
             {
                 "DEEPSEEK_API_KEY": "test-key",
-                "DEEPSEEK_MODEL": "deepseek-v4-flash",
+                "DEEPSEEK_MODEL": "deepseek-flash",
             },
             clear=False,
         )
@@ -223,7 +223,7 @@ class OrganizeDeepSeekTests(unittest.TestCase):
             os.environ,
             {
                 "DEEPSEEK_API_KEY": "test-key",
-                "DEEPSEEK_MODEL": "deepseek-v4-flash",
+                "DEEPSEEK_MODEL": "deepseek-flash",
             },
             clear=False,
         )

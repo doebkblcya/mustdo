@@ -102,7 +102,7 @@ Asia/Shanghai，ISO 字符串存储。`today_date()`, `tomorrow_date()`, `utcish
 端点 `POST .../api/v3/auc/bigmodel/recognize/flash`，资源 `volc.bigasr.auc_turbo`，同步接口。认证优先新版 `X-Api-Key`（`VOLC_API_KEY`），缺失时回退旧版 `X-Api-App-Key` + `X-Api-Access-Key`。
 
 ### DeepSeek
-`deepseek-v4-flash`，`thinking: disabled`，`temperature: 0.1`，`max_tokens: 1200`，`response_format: json_object`。httpx.AsyncClient 全局复用。Prompt 动态计算 today/tomorrow/next_friday 等日期，含 few-shot 示例。
+`deepseek-flash`（DeepSeek-V4.1-Flash，旧名 `deepseek-v4-flash` 已下线但会被路由到 V4.1-Flash），`thinking: disabled`（思考模式默认开启，必须显式关闭，否则 `temperature` 会被静默忽略），`temperature: 0.1`，`max_tokens: 1200`，`response_format: json_object`。httpx.AsyncClient 全局复用。Prompt 动态计算 today/tomorrow/next_friday 等日期，含 few-shot 示例。
 
 ### 代码约定
 - 数据库：`Depends(get_db)` 在路由中获取连接。简单操作用 `execute()+commit()`，多步用 `BEGIN IMMEDIATE`→`commit()`/`rollback()`
