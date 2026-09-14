@@ -14,27 +14,49 @@ function formatTokens(tokens) {
   return String(Math.max(0, Math.round(Number(tokens) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+function remainingPercent(remaining, total, unlimited, enabled) {
+  if (!enabled) return 0;
+  if (unlimited) return 100;
+  const limit = Math.max(0, Number(total) || 0);
+  if (!limit) return 0;
+  return Math.max(0, Math.min(100, Math.round((Number(remaining) || 0) / limit * 100)));
+}
+
 function quotaView(quota) {
   const asr = quota.asr;
   const ai = quota.ai;
   return {
     asr: {
       enabled: asr.enabled,
-      usage: asr.unlimited
-        ? "已用 " + formatDuration(asr.used_seconds)
-        : "已用 " + formatDuration(asr.used_seconds) + " / " + formatDuration(asr.total_seconds),
-      remaining: !asr.enabled
+      unlimited: asr.unlimited,
+      status: !asr.enabled
         ? "已停用"
-        : (asr.unlimited ? "不限额度" : "剩余 " + formatDuration(asr.remaining_seconds)),
+        : (asr.unlimited ? "无限额度" : ""),
+      summary: !asr.enabled
+        ? "当前不可使用"
+        : (asr.unlimited ? "不设总额度上限" : "总额度 " + formatDuration(asr.total_seconds)),
+      remainingPercent: remainingPercent(
+        asr.remaining_seconds,
+        asr.total_seconds,
+        asr.unlimited,
+        asr.enabled
+      ),
     },
     ai: {
       enabled: ai.enabled,
-      usage: ai.unlimited
-        ? "已用 " + formatTokens(ai.used_tokens) + " tokens"
-        : "已用 " + formatTokens(ai.used_tokens) + " / " + formatTokens(ai.total_tokens) + " tokens",
-      remaining: !ai.enabled
+      unlimited: ai.unlimited,
+      status: !ai.enabled
         ? "已停用"
-        : (ai.unlimited ? "不限额度" : "剩余 " + formatTokens(ai.remaining_tokens) + " tokens"),
+        : (ai.unlimited ? "无限额度" : ""),
+      summary: !ai.enabled
+        ? "当前不可使用"
+        : (ai.unlimited ? "不设总额度上限" : "总额度 " + formatTokens(ai.total_tokens) + " tokens"),
+      remainingPercent: remainingPercent(
+        ai.remaining_tokens,
+        ai.total_tokens,
+        ai.unlimited,
+        ai.enabled
+      ),
     },
   };
 }
