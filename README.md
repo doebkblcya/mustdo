@@ -67,7 +67,9 @@ Mustdo 是一个**轻量语音待办工具**。你只需要按住按钮、说出
 | **AI 整理** | 一键让 AI 将今日待办智能分组，结果本地缓存，切换视图自动刷新 |
 | **tab 横滑** | 今天/明天/后续 tab 行支持左右滑动切换，列表卡片滑动互不干扰 |
 | **手动编辑** | 内容、日期、时间、完成状态均可在界面上手动修改 |
-| **邀请码注册** | 单次 / 长期邀请码，数据按用户隔离 |
+| **微信静默登录** | 首次登录自动开户并分配总额度，数据按用户隔离 |
+| **额度可见** | 设置页展示语音与 AI 的总额、已用和剩余，管理员可按用户调整 |
+| **后台备注** | 管理员可为用户设置私有备注，列表、用量和诊断页面优先展示 |
 | **无障碍适配** | 跟随系统大字号，支持减少动态效果（reduced-motion）降级动画 |
 
 ## 语音使用流程
@@ -143,8 +145,6 @@ cd backend
 cp .env.example .env          # 编辑 .env，填入火山引擎和 DeepSeek 的 API Key
 uv sync
 uv run python scripts/init_db.py
-uv run python scripts/create_invite.py               # 生成单次邀请码
-uv run python scripts/create_invite.py --type multi   # 生成长期邀请码
 uv run uvicorn app.main:app --reload
 ```
 
@@ -158,7 +158,7 @@ scripts/server.sh start        # stop | restart | status | logs
 ### 2. `.env` 必需配置
 
 ```bash
-# 应用密钥，用于签名 session token 和邀请码 hash
+# 应用密钥，用于签名 session token
 SECRET_KEY=change-me-in-production
 
 # 火山引擎语音识别（新版控制台只需 API Key）
@@ -166,17 +166,13 @@ VOLC_API_KEY=
 
 # DeepSeek AI 解析
 DEEPSEEK_API_KEY=
+
+# 新用户默认总额度；设为 0 表示不限
+DEFAULT_ASR_TOTAL_SECONDS=1200
+DEFAULT_AI_TOTAL_TOKENS=300000
 ```
 
 完整配置项（数据库路径、时区、登录态有效期、录音时长限制、DeepSeek 模型等）见 `backend/.env.example`。
-
-### 3. 邀请码管理
-
-```bash
-cd backend
-uv run python scripts/list_invites.py      # 查看邀请码记录
-uv run python scripts/clear_invites.py     # 清空所有邀请码
-```
 
 ## 技术栈
 
@@ -184,7 +180,7 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 |---|---|
 | 后端框架 | FastAPI + Pydantic v2 + uv |
 | 数据库 | SQLite（WAL 模式，`check_same_thread=False`） |
-| 认证 | Bearer Token（HMAC-SHA256）、pbkdf2_sha256 密码哈希 |
+| 认证 | 微信 `code` 换取 OpenID + Bearer Token（HMAC-SHA256） |
 | 语音识别 | 火山引擎录音文件极速版（同步 HTTP POST，WAV base64） |
 | AI 解析 | DeepSeek Chat Completions（JSON Output，thinking 禁用，temperature 0.1） |
 | 小程序 | 微信原生框架（滑动交互 + 自定义 Spring 物理引擎） |
@@ -193,10 +189,9 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/api/auth/token/register` | 注册（需邀请码）并返回 Bearer Token |
-| `POST` | `/api/auth/token/login` | 登录并返回 Bearer Token |
-| `POST` | `/api/auth/logout` | 登出，撤销 Bearer Token |
+| `POST` | `/api/auth/wechat` | 微信静默登录；首次登录自动创建用户与默认额度 |
 | `GET` | `/api/me` | 当前用户 |
+| `GET` | `/api/me/quota` | 当前用户总额度、已用量与剩余量 |
 | `GET` | `/api/health` | 健康检查（无鉴权） |
 | `GET` | `/api/todos` | 获取待办（今天/明天/后续分组） |
 | `PATCH` | `/api/todos/{id}` | 编辑待办（内容/日期/时间/状态/置顶） |
@@ -219,16 +214,16 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 │   │   ├── deps.py          FastAPI 依赖（get_db、current_user）
 │   │   ├── errors.py        统一错误处理
 │   │   ├── schemas.py       Pydantic 请求/响应模型
-│   │   ├── security.py      密码 hash、session token、邀请码
+│   │   ├── security.py      session token 生成与哈希
 │   │   ├── time_utils.py    Asia/Shanghai 时间工具
 │   │   ├── routers/         认证、待办、语音路由
 │   │   └── services/        火山 ASR、DeepSeek、音频处理、待办逻辑
-│   ├── scripts/             数据库初始化、邀请码管理、过期清理、server.sh
-│   └── tests/               后端单元测试（5 个文件 20 个用例）
+│   ├── scripts/             数据库初始化、过期清理、server.sh
+│   └── tests/               后端单元测试
 ├── miniprogram/             微信小程序
 │   ├── assets/icons/        Material Symbols SVG 源 + 96×96 PNG 构建产物
 │   ├── pages/
-│   │   ├── auth/            登录 / 注册
+│   │   ├── auth/            微信静默登录
 │   │   ├── todos/           待办列表和语音输入
 │   │   ├── settings/        设置（添加前确认等）
 │   │   └── trash/           回收站
@@ -242,7 +237,7 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 **近期**
 
 - 补齐待办分组 / 时间规则 / 编辑置顶交互的测试
-- 管理员脚本：重置密码、禁用用户、撤销邀请码
+- 管理员脚本：重置密码、禁用用户
 
 **中期**
 
@@ -266,9 +261,9 @@ uv run python scripts/clear_invites.py     # 清空所有邀请码
 
 转写（一次 HTTP POST）+ AI 解析（JSON 输出）通常数秒完成，期间界面显示「正在解析待办…」。失败不写入数据，直接提示，不会让用户等一个不确定的结果。
 
-**如何获得邀请码？**
+**如何开始使用？**
 
-后端管理员运行 `scripts/create_invite.py` 生成（单次 `TODO-S-...` 或长期 `TODO-M-...`）。邀请码只存 hash，明文仅生成时输出一次。
+打开小程序后会自动完成微信登录。新用户直接进入待办页，并获得默认总额度；额度可在设置页查看。
 
 **数据存在哪里？**
 

@@ -35,15 +35,16 @@ def _create_admin(username: str, password_hash: str) -> int:
         return int(cur.lastrowid)
 
 
-def _create_user(openid: str) -> int:
+def _create_user(openid: str, remark: str | None = None) -> int:
     now = utcish_now_iso()
     with get_connection() as db:
         cur = db.execute(
             """
-            INSERT INTO users (wechat_openid, status, created_at, updated_at, last_login_at)
-            VALUES (?, 'active', ?, ?, ?)
+            INSERT INTO users
+                (wechat_openid, admin_remark, status, created_at, updated_at, last_login_at)
+            VALUES (?, ?, 'active', ?, ?, ?)
             """,
-            (openid, now, now, now),
+            (openid, remark, now, now, now),
         )
         db.commit()
         return int(cur.lastrowid)
@@ -122,14 +123,14 @@ class AdminReminderTests(unittest.TestCase):
         c = self._client()
         self._login(c)
 
-        uid = _create_user("openid-reminder")
+        uid = _create_user("openid-reminder", "提醒账号")
         todo_id = _create_todo(uid, "买牛奶")
         _insert_reminder(todo_id, uid, "failed", error_code="43101")
 
         r = c.get("/admin/todo-reminder/list", follow_redirects=False)
         self.assertEqual(r.status_code, 200)
         self.assertIn("买牛奶", r.text)      # todo content via relationship
-        self.assertIn("openid-reminder", r.text)  # user openid via relationship
+        self.assertIn("提醒账号", r.text)          # admin remark via relationship
         self.assertIn("发送失败", r.text)    # status mapped to Chinese
         self.assertIn("43101", r.text)       # error_code column
 

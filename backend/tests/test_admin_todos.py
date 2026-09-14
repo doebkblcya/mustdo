@@ -34,15 +34,16 @@ def _create_admin(username: str, password_hash: str) -> int:
         return int(cur.lastrowid)
 
 
-def _create_user(openid: str) -> int:
+def _create_user(openid: str, remark: str | None = None) -> int:
     now = utcish_now_iso()
     with get_connection() as db:
         cur = db.execute(
             """
-            INSERT INTO users (wechat_openid, status, created_at, updated_at, last_login_at)
-            VALUES (?, 'active', ?, ?, ?)
+            INSERT INTO users
+                (wechat_openid, admin_remark, status, created_at, updated_at, last_login_at)
+            VALUES (?, ?, 'active', ?, ?, ?)
             """,
-            (openid, now, now, now),
+            (openid, remark, now, now, now),
         )
         db.commit()
         return int(cur.lastrowid)
@@ -110,7 +111,7 @@ class AdminTodoTests(unittest.TestCase):
         c = self._client()
         self._login(c)
 
-        uid = _create_user("openid-todo")
+        uid = _create_user("openid-todo", "待办账号")
         _create_todo(uid, "买牛奶", status="pending")
         _create_todo(uid, "开会", status="done")
 
@@ -118,7 +119,7 @@ class AdminTodoTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("买牛奶", r.text)
         self.assertIn("开会", r.text)
-        self.assertIn("openid-todo", r.text)   # user openid via relationship
+        self.assertIn("待办账号", r.text)       # admin remark via relationship
         self.assertIn("未完成", r.text)          # status formatter
         self.assertIn("已完成", r.text)
 

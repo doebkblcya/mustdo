@@ -53,16 +53,16 @@ class AdminDashboardTests(unittest.TestCase):
             db.execute(
                 """
                 INSERT INTO users
-                    (wechat_openid, status, invite_redeemed_at, created_at, updated_at, last_login_at)
-                VALUES ('openid-dashboard-user', 'active', ?, ?, ?, ?)
+                    (wechat_openid, admin_remark, status, created_at, updated_at, last_login_at)
+                VALUES ('openid-dashboard-user', '主账号', 'active', ?, ?, ?)
                 """,
-                (self.now, self.now, self.now, self.now),
+                (self.now, self.now, self.now),
             )
             db.execute(
                 """
                 INSERT INTO user_quotas
-                    (user_id, asr_enabled, asr_daily_seconds, ai_enabled,
-                     ai_daily_tokens, created_at, updated_at)
+                    (user_id, asr_enabled, asr_total_seconds, ai_enabled,
+                     ai_total_tokens, created_at, updated_at)
                 VALUES (1, 1, 100, 1, 1000, ?, ?)
                 """,
                 (self.now, self.now),
@@ -133,8 +133,9 @@ class AdminDashboardTests(unittest.TestCase):
         from app.services.admin_dashboard import list_users
 
         with get_connection() as db:
-            result = list_users(db, query="dashboard", usage="near")
+            result = list_users(db, query="主账号", usage="near")
         self.assertEqual(result["count"], 1)
+        self.assertEqual(result["items"][0]["admin_remark"], "主账号")
         self.assertEqual(result["items"][0]["asr_ratio"], 85)
         self.assertEqual(result["items"][0]["openid_masked"], "openi…user")
 
@@ -155,8 +156,8 @@ class AdminDashboardTests(unittest.TestCase):
         self._login(client)
         checks = {
             "/admin/": "运营概览",
-            "/admin/users": "openid-dashboard-user"[:5],
-            "/admin/users/1": "测试提醒待办",
+            "/admin/users": "主账号",
+            "/admin/users/1": "主账号",
             "/admin/usage": "900",
             "/admin/diagnostics?status=failed": "用户拒绝接收消息",
             "/admin/diagnostics?kind=todos": "测试提醒待办",
@@ -165,6 +166,21 @@ class AdminDashboardTests(unittest.TestCase):
             response = client.get(url, follow_redirects=False)
             self.assertEqual(response.status_code, 200, msg=url)
             self.assertIn(marker, response.text, msg=url)
+
+    def test_admin_can_edit_user_remark(self) -> None:
+        client = self._client()
+        self._login(client)
+        response = client.post(
+            "/admin/user/edit/1",
+            data={"admin_remark": "家人账号"},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        with get_connection() as db:
+            row = db.execute(
+                "SELECT admin_remark FROM users WHERE id = 1"
+            ).fetchone()
+        self.assertEqual(row["admin_remark"], "家人账号")
 
     def test_admin_theme_asset_is_served(self) -> None:
         client = self._client()

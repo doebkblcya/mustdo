@@ -36,6 +36,8 @@ class Settings:
     wechat_template_id: str
     admin_session_seconds: int
     admin_cookie_secure: bool
+    default_asr_total_seconds: float
+    default_ai_total_tokens: int
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -66,4 +68,6 @@ def get_settings() -> Settings:
         wechat_template_id=os.getenv("WECHAT_TEMPLATE_ID", ""),
         admin_session_seconds=int(os.getenv("ADMIN_SESSION_SECONDS", "1800")),
         admin_cookie_secure=os.getenv("ADMIN_COOKIE_SECURE", "1") == "1",
+        default_asr_total_seconds=float(os.getenv("DEFAULT_ASR_TOTAL_SECONDS", "1200")),
+        default_ai_total_tokens=int(os.getenv("DEFAULT_AI_TOTAL_TOKENS", "300000")),
     )

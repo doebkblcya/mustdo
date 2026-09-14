@@ -17,7 +17,6 @@ from app.admin.audit import JsonAuditBackend
 from app.admin.auth import AdminAuth
 from app.admin.engine import create_admin_engine
 from app.admin.hub_views import DiagnosticsView, UsageCenterView, UserDetailView, UsersHubView
-from app.admin.invite_create_view import InviteCreateView
 from app.admin.summary_view import UsageSummaryView
 from app.admin.usage_history_view import UserUsageView
 from app.admin.views import (
@@ -25,7 +24,6 @@ from app.admin.views import (
     AdminView,
     AiUsageView,
     AsrUsageView,
-    InviteCodeView,
     TodoReminderView,
     TodoView,
     UserQuotaView,
@@ -78,8 +76,6 @@ def mount_admin(app: FastAPI) -> None:
         AiUsageView,
         UsageSummaryView,
         UserUsageView,
-        InviteCodeView,
-        InviteCreateView,
         TodoReminderView,
         AdminView,
         AdminAuditLogView,

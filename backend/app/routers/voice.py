@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 
-from app.deps import current_user_invited, get_db
+from app.deps import current_user, get_db
 from app.errors import raise_api_error
 from app.schemas import TranscriptionResponse
 from app.services.asr import VolcAsrError, VolcSilentAudioError, recognize_pcm
@@ -50,7 +50,7 @@ async def create_transcription(
     file: UploadFile = File(...),
     trace_id: str | None = Header(default=None, alias="X-Trace-ID"),
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     user_id = int(user["id"])
     started_at = perf_counter()

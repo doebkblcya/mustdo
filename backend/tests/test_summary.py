@@ -53,9 +53,9 @@ class UsageSummaryTests(unittest.TestCase):
 
     def test_summary_groups_usage_and_reports_remaining(self) -> None:
         uid = self._add_user("openid_1")
-        get_quota(self.db, uid)  # lazily creates an unlimited default row
+        get_quota(self.db, uid)
         self.db.execute(
-            "UPDATE user_quotas SET asr_daily_seconds = 600, ai_daily_tokens = 50000 WHERE user_id = ?",
+            "UPDATE user_quotas SET asr_total_seconds = 600, ai_total_tokens = 50000 WHERE user_id = ?",
             (uid,),
         )
         self.db.commit()
@@ -97,7 +97,11 @@ class UsageSummaryTests(unittest.TestCase):
         uid = self._add_user("openid_2")
         get_quota(self.db, uid)
         self.db.execute(
-            "UPDATE user_quotas SET asr_enabled = 0, asr_daily_seconds = 0 WHERE user_id = ?",
+            """
+            UPDATE user_quotas
+            SET asr_enabled = 0, asr_total_seconds = 0, ai_total_tokens = 0
+            WHERE user_id = ?
+            """,
             (uid,),
         )
         self.db.commit()
@@ -111,7 +115,7 @@ class UsageSummaryTests(unittest.TestCase):
         self.assertEqual(row["ai_limit"], 0)
 
     def test_user_without_activity_or_quota_is_omitted(self) -> None:
-        # A brand-new user with no quota row and no usage today is not listed.
+        # A user inserted outside the login flow has no quota and is omitted.
         self._add_user("openid_never_active")
         rows = collect_usage_summary(self.db)
         self.assertEqual(rows, [])

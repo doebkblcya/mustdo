@@ -25,25 +25,12 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 wechat_openid TEXT NOT NULL UNIQUE,
+                admin_remark TEXT,
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'disabled')),
-                invite_redeemed_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS invite_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code_hash TEXT NOT NULL UNIQUE,
-                type TEXT NOT NULL DEFAULT 'single'
-                    CHECK (type IN ('single', 'multi')),
-                status TEXT NOT NULL DEFAULT 'active'
-                    CHECK (status IN ('active', 'redeemed', 'revoked')),
-                label TEXT,
-                created_at TEXT NOT NULL,
-                used_at TEXT,
-                used_by_user_id INTEGER REFERENCES users(id)
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -120,10 +107,10 @@ def init_db() -> None:
                 user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
                 asr_enabled INTEGER NOT NULL DEFAULT 1
                     CHECK (asr_enabled IN (0, 1)),
-                asr_daily_seconds REAL NOT NULL DEFAULT 0,
+                asr_total_seconds REAL NOT NULL DEFAULT 1200,
                 ai_enabled INTEGER NOT NULL DEFAULT 1
                     CHECK (ai_enabled IN (0, 1)),
-                ai_daily_tokens INTEGER NOT NULL DEFAULT 0,
+                ai_total_tokens INTEGER NOT NULL DEFAULT 300000,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -179,18 +166,21 @@ def init_db() -> None:
                 ON admin_audit_logs(created_at);
             """
         )
-        _migrate_invite_codes_type(conn)
         _migrate_todos_pinned(conn)
         _migrate_users_wechat(conn)
+        _migrate_user_quotas_to_totals(conn)
+        _remove_invite_schema(conn)
+        _migrate_users_admin_remark(conn)
+        _ensure_all_users_have_quotas(conn)
 
 
 def _migrate_users_wechat(conn: sqlite3.Connection) -> None:
     """Migration: rebuild users to the WeChat identity schema.
 
-    The legacy schema used username/password + invite registration. We now
-    identify users purely by wechat_openid. Existing (pre-WeChat) users have no
-    openid and cannot log in again, so we rebuild the table. There are no real
-    users yet, so no rows are preserved.
+    The legacy schema used username/password registration. We now identify
+    users purely by wechat_openid. Existing (pre-WeChat) users have no openid
+    and cannot log in again, so we rebuild the table. There are no real users
+    yet, so no rows are preserved.
     """
     cols = {row[1] for row in conn.execute("PRAGMA table_info('users')").fetchall()}
     if "wechat_openid" in cols:
@@ -203,9 +193,9 @@ def _migrate_users_wechat(conn: sqlite3.Connection) -> None:
             CREATE TABLE users_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 wechat_openid TEXT NOT NULL UNIQUE,
+                admin_remark TEXT,
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'disabled')),
-                invite_redeemed_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 last_login_at TEXT
@@ -214,29 +204,95 @@ def _migrate_users_wechat(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE users")
         conn.execute("ALTER TABLE users_new RENAME TO users")
-        # Old sessions / todos / invite usage all reference pre-rebuild user
-        # ids. The rebuilt users table restarts AUTOINCREMENT at 1, so without
-        # cleanup the first WeChat user could read another account's todos or
-        # inherit invite usage. Old (pre-WeChat) data is abandoned entirely.
+        # Old sessions and todos reference pre-rebuild user ids. The rebuilt
+        # users table restarts AUTOINCREMENT at 1, so without cleanup the first
+        # WeChat user could read another account's todos. Old (pre-WeChat) data
+        # is abandoned entirely.
         conn.execute("DELETE FROM sessions")
         conn.execute("DELETE FROM todos")
-        conn.execute(
-            "UPDATE invite_codes SET used_by_user_id = NULL, used_at = NULL"
-            " WHERE used_by_user_id IS NOT NULL"
-        )
         conn.commit()
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
-def _migrate_invite_codes_type(conn: sqlite3.Connection) -> None:
-    """Migration: add type column to invite_codes if it doesn't exist."""
-    cols = {row[1] for row in conn.execute("PRAGMA table_info('invite_codes')").fetchall()}
-    if "type" not in cols:
+def _migrate_user_quotas_to_totals(conn: sqlite3.Connection) -> None:
+    """Replace the former daily caps with lifetime total allowances.
+
+    Existing zero values were the old lazy-created unlimited defaults. During
+    this one-time column migration they become the configured public defaults;
+    future zero values remain a deliberate administrator override for
+    unlimited access.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('user_quotas')").fetchall()}
+    migrated_asr = "asr_daily_seconds" in cols and "asr_total_seconds" not in cols
+    migrated_ai = "ai_daily_tokens" in cols and "ai_total_tokens" not in cols
+    if migrated_asr:
+        conn.execute("ALTER TABLE user_quotas RENAME COLUMN asr_daily_seconds TO asr_total_seconds")
+    if migrated_ai:
+        conn.execute("ALTER TABLE user_quotas RENAME COLUMN ai_daily_tokens TO ai_total_tokens")
+
+    settings = get_settings()
+    if migrated_asr:
         conn.execute(
-            "ALTER TABLE invite_codes ADD COLUMN type TEXT NOT NULL DEFAULT 'single'"
-            " CHECK (type IN ('single', 'multi'))"
+            "UPDATE user_quotas SET asr_total_seconds = ? WHERE asr_total_seconds = 0",
+            (max(0.0, settings.default_asr_total_seconds),),
         )
+    if migrated_ai:
+        conn.execute(
+            "UPDATE user_quotas SET ai_total_tokens = ? WHERE ai_total_tokens = 0",
+            (max(0, settings.default_ai_total_tokens),),
+        )
+
+
+def _remove_invite_schema(conn: sqlite3.Connection) -> None:
+    """Keep previously admitted users, then permanently remove the old gate.
+
+    This runs only while the retired marker column still exists. Accounts that
+    never passed the old gate are discarded with their cascaded sessions and
+    business data; subsequent direct-login accounts are unaffected because the
+    marker column no longer exists after this migration.
+    """
+    user_cols = {row[1] for row in conn.execute("PRAGMA table_info('users')").fetchall()}
+    conn.execute("DROP TABLE IF EXISTS invite_codes")
+    if "invite_redeemed_at" in user_cols:
+        conn.execute("DELETE FROM users WHERE invite_redeemed_at IS NULL")
+    conn.execute(
+        """
+        DELETE FROM admin_audit_logs
+        WHERE lower(COALESCE(target_type, '')) LIKE '%invite%'
+           OR lower(COALESCE(detail, '')) LIKE '%invite%'
+           OR COALESCE(detail, '') LIKE '%邀请码%'
+        """
+    )
+    if "invite_redeemed_at" in user_cols:
+        conn.execute("ALTER TABLE users DROP COLUMN invite_redeemed_at")
+
+
+def _ensure_all_users_have_quotas(conn: sqlite3.Connection) -> None:
+    """Backfill a default quota row for every existing user."""
+    settings = get_settings()
+    now = utcish_now_iso()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO user_quotas
+            (user_id, asr_enabled, asr_total_seconds, ai_enabled,
+             ai_total_tokens, created_at, updated_at)
+        SELECT id, 1, ?, 1, ?, ?, ? FROM users
+        """,
+        (
+            max(0.0, settings.default_asr_total_seconds),
+            max(0, settings.default_ai_total_tokens),
+            now,
+            now,
+        ),
+    )
+
+
+def _migrate_users_admin_remark(conn: sqlite3.Connection) -> None:
+    """Add the optional private admin label to an existing users table."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('users')").fetchall()}
+    if "admin_remark" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN admin_remark TEXT")
 
 
 def _migrate_todos_pinned(conn: sqlite3.Connection) -> None:

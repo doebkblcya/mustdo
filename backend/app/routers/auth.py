@@ -8,11 +8,23 @@ from fastapi import APIRouter, Depends, status
 from app.config import get_settings
 from app.deps import current_user, get_db
 from app.errors import raise_api_error
-from app.schemas import AuthTokenResponse, UserPublic, WechatLoginRequest
+from app.schemas import (
+    AiQuotaPublic,
+    AsrQuotaPublic,
+    AuthTokenResponse,
+    QuotaPublicResponse,
+    UserPublic,
+    WechatLoginRequest,
+)
 from app.security import generate_session_token, hash_session_token
+from app.services.quota import (
+    ai_used_tokens_total,
+    asr_used_seconds_total,
+    create_default_quota,
+    get_quota,
+)
 from app.services.wechat import WechatLoginError, exchange_code_for_openid
 from app.time_utils import now_shanghai, utcish_now_iso
-
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -49,7 +61,7 @@ async def wechat_login(
 
     now = utcish_now_iso()
     existing = db.execute(
-        "SELECT id, status, invite_redeemed_at FROM users WHERE wechat_openid = ?",
+        "SELECT id, status FROM users WHERE wechat_openid = ?",
         (openid,),
     ).fetchone()
 
@@ -67,14 +79,14 @@ async def wechat_login(
                 (openid, now, now, now),
             )
             user_id = int(cursor.lastrowid)
-            invite_redeemed = None
+            create_default_quota(db, user_id)
         else:
             user_id = int(existing["id"])
-            invite_redeemed = existing["invite_redeemed_at"]
             db.execute(
                 "UPDATE users SET last_login_at = ? WHERE id = ?",
                 (now, user_id),
             )
+            create_default_quota(db, user_id)
         token = _create_session(db, user_id)
         db.execute("COMMIT")
     except sqlite3.Error:
@@ -88,10 +100,38 @@ async def wechat_login(
     return AuthTokenResponse(
         user=UserPublic(id=user_id),
         token=token,
-        needs_invite=invite_redeemed is None,
     )
 
 
 @router.get("/me", response_model=UserPublic)
 def me(user: sqlite3.Row = Depends(current_user)):
     return UserPublic(id=int(user["id"]))
+
+
+@router.get("/me/quota", response_model=QuotaPublicResponse)
+def my_quota(
+    db: sqlite3.Connection = Depends(get_db),
+    user: sqlite3.Row = Depends(current_user),
+):
+    user_id = int(user["id"])
+    quota = get_quota(db, user_id)
+    asr_limit = float(quota["asr_total_seconds"] or 0)
+    ai_limit = int(quota["ai_total_tokens"] or 0)
+    asr_used = asr_used_seconds_total(db, user_id)
+    ai_used = ai_used_tokens_total(db, user_id)
+    return QuotaPublicResponse(
+        asr=AsrQuotaPublic(
+            enabled=bool(quota["asr_enabled"]),
+            total_seconds=asr_limit,
+            used_seconds=asr_used,
+            remaining_seconds=max(0.0, asr_limit - asr_used) if asr_limit > 0 else None,
+            unlimited=asr_limit <= 0,
+        ),
+        ai=AiQuotaPublic(
+            enabled=bool(quota["ai_enabled"]),
+            total_tokens=ai_limit,
+            used_tokens=ai_used,
+            remaining_tokens=max(0, ai_limit - ai_used) if ai_limit > 0 else None,
+            unlimited=ai_limit <= 0,
+        ),
+    )

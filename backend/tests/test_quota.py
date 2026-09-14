@@ -21,8 +21,8 @@ from app.services.quota import (  # noqa: E402
     CODE_AI_QUOTA_EXCEEDED,
     CODE_ASR_DISABLED,
     CODE_ASR_QUOTA_EXCEEDED,
-    ai_used_tokens_today,
-    asr_used_seconds_today,
+    ai_used_tokens_total,
+    asr_used_seconds_total,
     check_ai_quota,
     check_asr_quota,
     get_quota,
@@ -81,33 +81,33 @@ class QuotaTests(unittest.TestCase):
         self.db.execute(
             """
             INSERT INTO user_quotas
-                (user_id, asr_enabled, asr_daily_seconds, ai_enabled, ai_daily_tokens, created_at, updated_at)
+                (user_id, asr_enabled, asr_total_seconds, ai_enabled, ai_total_tokens, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 asr_enabled=excluded.asr_enabled,
-                asr_daily_seconds=excluded.asr_daily_seconds,
+                asr_total_seconds=excluded.asr_total_seconds,
                 ai_enabled=excluded.ai_enabled,
-                ai_daily_tokens=excluded.ai_daily_tokens,
+                ai_total_tokens=excluded.ai_total_tokens,
                 updated_at=excluded.updated_at
             """,
             (
                 self.user_id,
                 kwargs.get("asr_enabled", 1),
-                kwargs.get("asr_daily_seconds", 0),
+                kwargs.get("asr_total_seconds", 0),
                 kwargs.get("ai_enabled", 1),
-                kwargs.get("ai_daily_tokens", 0),
+                kwargs.get("ai_total_tokens", 0),
                 now,
                 now,
             ),
         )
         self.db.commit()
 
-    def test_get_quota_creates_unlimited_default(self) -> None:
+    def test_get_quota_creates_configured_default(self) -> None:
         q = get_quota(self.db, self.user_id)
         self.assertEqual(q["asr_enabled"], 1)
-        self.assertEqual(q["asr_daily_seconds"], 0)
+        self.assertEqual(q["asr_total_seconds"], 1200)
         self.assertEqual(q["ai_enabled"], 1)
-        self.assertEqual(q["ai_daily_tokens"], 0)
+        self.assertEqual(q["ai_total_tokens"], 300000)
 
     def test_asr_disabled_raises(self) -> None:
         self._set_quota(asr_enabled=0)
@@ -116,19 +116,19 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(raised.exception.detail["code"], CODE_ASR_DISABLED)
 
     def test_asr_quota_exceeded(self) -> None:
-        self._set_quota(asr_daily_seconds=100)
+        self._set_quota(asr_total_seconds=100)
         record_asr_usage(
             self.db, self.user_id,
             request_id="r1", logid=None, audio_seconds=95.0,
             status="success", error_code=None, duration_ms=100,
         )
-        self.assertAlmostEqual(asr_used_seconds_today(self.db, self.user_id), 95.0)
+        self.assertAlmostEqual(asr_used_seconds_total(self.db, self.user_id), 95.0)
         with self.assertRaises(HTTPException) as raised:
             check_asr_quota(self.db, self.user_id, 10.0)  # 95 + 10 > 100
         self.assertEqual(raised.exception.detail["code"], CODE_ASR_QUOTA_EXCEEDED)
 
     def test_asr_quota_within_limit_ok(self) -> None:
-        self._set_quota(asr_daily_seconds=100)
+        self._set_quota(asr_total_seconds=100)
         record_asr_usage(
             self.db, self.user_id,
             request_id="r1", logid=None, audio_seconds=40.0,
@@ -143,20 +143,20 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(raised.exception.detail["code"], CODE_AI_DISABLED)
 
     def test_ai_quota_soft_cap(self) -> None:
-        self._set_quota(ai_daily_tokens=1000)
+        self._set_quota(ai_total_tokens=1000)
         record_ai_usage(
             self.db, self.user_id,
             purpose="parse", status="success",
             prompt_tokens=0, completion_tokens=0, total_tokens=1000,
             cache_hit_tokens=0, cache_miss_tokens=0, error_code=None, duration_ms=100,
         )
-        self.assertEqual(ai_used_tokens_today(self.db, self.user_id), 1000)
+        self.assertEqual(ai_used_tokens_total(self.db, self.user_id), 1000)
         with self.assertRaises(HTTPException) as raised:
             check_ai_quota(self.db, self.user_id)
         self.assertEqual(raised.exception.detail["code"], CODE_AI_QUOTA_EXCEEDED)
 
     def test_unlimited_limits_pass(self) -> None:
-        # Default unlimited: no quota rows, never raises even with usage.
+        self._set_quota(asr_total_seconds=0, ai_total_tokens=0)
         record_asr_usage(
             self.db, self.user_id,
             request_id="r1", logid=None, audio_seconds=9999.0,

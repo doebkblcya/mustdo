@@ -5,7 +5,7 @@ using native ``sqlite3``; this ORM is a read/write projection onto the SAME
 SQLite database for the console only.
 
 Permission grid (enforced in ``ModelView`` subclasses):
-- ``users``            -> read-only (identity data)
+- ``users``            -> admin remark only
 - ``admins``           -> read-only (managed by the CLI script)
 - ``asr_usage``        -> read-only
 - ``ai_usage``         -> read-only
@@ -33,8 +33,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     wechat_openid: Mapped[str] = mapped_column(unique=True)
+    admin_remark: Mapped[str | None]
     status: Mapped[str]
-    invite_redeemed_at: Mapped[str | None]
     created_at: Mapped[str]
     updated_at: Mapped[str]
     last_login_at: Mapped[str | None]
@@ -42,7 +42,8 @@ class User(Base):
     def __repr__(self) -> str:
         """Stable, human-readable identity for the admin console (FK selects,
         list rows, detail pages). SQLAdmin renders relations via this string."""
-        return f"#{self.id} {self.wechat_openid} ({self.status})"
+        label = self.admin_remark or f"用户 #{self.id}"
+        return f"{label} · #{self.id} ({self.status})"
 
 
 class Admin(Base):
@@ -66,9 +67,9 @@ class UserQuota(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
     user: Mapped[User] = relationship()
     asr_enabled: Mapped[int]
-    asr_daily_seconds: Mapped[float]
+    asr_total_seconds: Mapped[float]
     ai_enabled: Mapped[int]
-    ai_daily_tokens: Mapped[int]
+    ai_total_tokens: Mapped[int]
     created_at: Mapped[str] = mapped_column(default=_now_iso)
     updated_at: Mapped[str] = mapped_column(default=_now_iso)
 
@@ -115,23 +116,6 @@ class AdminAuditLog(Base):
     target_id: Mapped[str | None]
     detail: Mapped[str | None]
     created_at: Mapped[str]
-
-
-class InviteCode(Base):
-    __tablename__ = "invite_codes"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    code_hash: Mapped[str] = mapped_column(unique=True)
-    type: Mapped[str]
-    status: Mapped[str]
-    label: Mapped[str | None]
-    created_at: Mapped[str]
-    used_at: Mapped[str | None]
-    used_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    user: Mapped[User | None] = relationship()
-
-    def __repr__(self) -> str:
-        return f"#{self.id} {self.type} ({self.status})"
 
 
 class Todo(Base):

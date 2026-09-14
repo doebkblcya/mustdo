@@ -8,45 +8,6 @@
     </view>
   </view>
 
-  <!-- 邀请码 -->
-  <block wx:elif="{{phase === 'invite'}}">
-    <view class="auth-invite" style="padding-top: {{inviteTop}}px;">
-      <view class="auth-copy">
-        <view class="auth-title">
-          <text>填写邀请码</text>
-          <text>继续使用</text>
-        </view>
-        <text class="auth-description">为保证服务质量，当前仅限受邀用户使用。</text>
-      </view>
-
-      <view class="auth-form">
-        <input
-          class="auth-input"
-          value="{{inviteCode}}"
-          placeholder="邀请码"
-          placeholder-class="auth-placeholder"
-          confirm-type="done"
-          maxlength="64"
-          bindinput="onInviteInput"
-          bindconfirm="submitInvite"
-        />
-        <view class="auth-error-row {{error ? 'auth-error-row--visible' : ''}}">
-          <image class="auth-error-icon" src="/assets/icons/png/error_fill.png" mode="aspectFit" />
-          <text class="auth-error">{{error || '请输入有效的邀请码'}}</text>
-        </view>
-      </view>
-
-      <button
-        class="auth-submit"
-        bindtap="submitInvite"
-        loading="{{submitting}}"
-        disabled="{{submitting}}"
-      >
-        确认并进入
-      </button>
-    </view>
-  </block>
-
   <!-- 登录失败 -->
   <view wx:else class="auth-state auth-failed">
     <text class="auth-failed-text">{{error || '微信登录失败，请重试'}}</text>

@@ -6,7 +6,7 @@ from time import perf_counter
 
 from fastapi import APIRouter, Depends, status
 
-from app.deps import current_user_invited, get_db
+from app.deps import current_user, get_db
 from app.errors import raise_api_error
 from app.schemas import (
     BatchCreateRequest,
@@ -71,7 +71,7 @@ def _record_ai_usage(
 @router.get("", response_model=TodoListResponse)
 def list_todos(
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     return list_grouped_todos(db, int(user["id"]))
 
@@ -80,7 +80,7 @@ def list_todos(
 async def parse_todos(
     payload: TodoParseRequest,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     user_id = int(user["id"])
     started_at = perf_counter()
@@ -139,7 +139,7 @@ async def parse_todos(
 def batch_create_todos(
     payload: BatchCreateRequest,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     started_at = perf_counter()
     items = [
@@ -176,7 +176,7 @@ def batch_create_todos(
 async def organize_todos(
     payload: OrganizeRequest,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     user_id = int(user["id"])
 
@@ -228,7 +228,7 @@ def patch_todo(
     todo_id: int,
     payload: TodoUpdateRequest,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ):
     fields = payload.model_fields_set
     values: dict[str, object] = {}
@@ -260,7 +260,7 @@ def patch_todo(
 def delete_todo(
     todo_id: int,
     db: sqlite3.Connection = Depends(get_db),
-    user: sqlite3.Row = Depends(current_user_invited),
+    user: sqlite3.Row = Depends(current_user),
 ) -> None:
     deleted = soft_delete_todo(db, int(user["id"]), todo_id)
     if not deleted:

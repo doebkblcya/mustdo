@@ -17,7 +17,7 @@ Mustdo 是一个轻量语音待办工具。第一版只让语音承担“新增�
 
 ```text
 微信小程序
-  - Bearer Token 登录/注册
+  - 微信静默登录并持有 Bearer Token
   - 按住说话，松手后 HTTP POST 上传完整音频
   - 复用同一套待办 API
         |
@@ -50,10 +50,10 @@ backend/
     errors.py              统一错误模型 {code, message, details}
     main.py                应用入口、生命周期、路由注册
     schemas.py             Pydantic 请求/响应模型
-    security.py            密码、邀请码、session token 哈希
+    security.py            session token 生成与哈希
     time_utils.py          Asia/Shanghai 时间工具
     routers/
-      auth.py              注册、登录、登出、当前用户
+      auth.py              微信登录、当前用户与额度查询
       todos.py             待办查询、编辑、删除、完成状态
       voice.py             语音转写和 AI 新增待办
     services/
@@ -63,9 +63,6 @@ backend/
       todos.py             待办分组、创建、更新、清理
   scripts/
     init_db.py             初始化数据库
-    create_invite.py       创建邀请码（支持 --type single/multi）
-    list_invites.py        查看邀请码记录
-    clear_invites.py       清空所有邀请码
     cleanup_overdue.py     清理软删超 7 天 / 未软删且截止日期超 7 天
     server.sh              后台启动/停止/重启/日志（生产用）
 ```
@@ -74,25 +71,26 @@ backend/
 
 当前 SQLite schema 包含：
 
-- `users`：用户名、密码 hash、状态、登录时间。
-- `invite_codes`：单次/多次邀请码 hash、类型、状态、使用记录。
+- `users`：微信 OpenID、后台私有备注、状态、登录时间。
 - `sessions`：登录 session token hash、过期和撤销状态。
 - `todos`：用户待办，包含内容、日期、可选时间、置顶状态、完成状态和软删除字段。
+- `user_quotas`：每个用户的 ASR/AI 开关与总额度。
+- `asr_usage` / `ai_usage`：累计用量明细。
 
-邀请码和 session token 都不明文存库。邀请码明文只在生成时输出一次，hash 依赖 `SECRET_KEY`。
+session token 不明文存库，其 hash 依赖 `SECRET_KEY`。
 
 ### 认证
 
-当前用户系统是”用户名/密码 + 邀请码注册”：
+当前用户系统使用微信静默登录：
 
-- 注册需要 `username`、`password`、`invite_code`。
-- 邀请码支持 `single`（单次使用，格式 `TODO-S-...`）和 `multi`（长期使用，格式 `TODO-M-...`）。
-- 登录只需要 `username`、`password`。
+- 小程序将 `wx.login` 得到的 code 发送到 `/api/auth/wechat`。
+- 后端向微信换取 OpenID；首次登录自动创建用户与默认总额度。
+- 从旧门禁版本升级时，仅保留曾通过门禁的存量账号；未通过的空账号随迁移删除。
 - 使用 Bearer Token 认证，`Authorization: Bearer <token>` header。
 - 所有待办 API 都从 session 解析 `user_id`，客户端不传 `user_id`。
-- 用户名 3-24 位字母/数字/下划线，密码至少 8 位。
 - 用户被禁用（`status='disabled'`）后已有 session 立即失效（查询时校验用户状态）。
-- 暂不支持忘记密码、邮箱、手机号和第三方登录。
+- ASR 默认总额度 1200 秒，AI 默认总额度 300000 tokens；0 表示不限，管理员可按用户调整。
+- 管理员可以设置最多 40 字的私有用户备注；小程序用户不可见，后台各页面优先展示。
 
 ### 待办规则
 
@@ -169,10 +167,9 @@ ASR 协议：
 ### API 摘要
 
 - `GET /api/health`：健康检查（无鉴权）
-- `POST /api/auth/token/register`：注册并返回 Bearer Token
-- `POST /api/auth/token/login`：登录并返回 Bearer Token
-- `POST /api/auth/logout`：登出，撤销 Bearer Token
+- `POST /api/auth/wechat`：微信静默登录并返回 Bearer Token
 - `GET /api/me`：当前用户
+- `GET /api/me/quota`：查询总额度、已用量与剩余量
 - `GET /api/todos`：获取今天/明天/后续分组
 - `PATCH /api/todos/{id}`：编辑内容、日期、时间、状态、置顶
 - `DELETE /api/todos/{id}`：软删除待办
@@ -216,7 +213,7 @@ miniprogram/
     icons/material/     Material Symbols SVG 源资源
     icons/png/          96×96 透明 PNG（构建产物，wxml 引用）
   pages/
-    auth/               登录 / 注册
+    auth/               微信静默登录
     todos/              待办列表和语音输入
     settings/           设置（添加前确认等）
     trash/              回收站
@@ -225,7 +222,7 @@ miniprogram/
   utils/api.js          Bearer Token API client
 ```
 
-小程序使用 Bearer Token 认证，登录/注册调用 `/api/auth/token/*` 获取 token，后续请求带：
+小程序使用 Bearer Token 认证，通过 `/api/auth/wechat` 获取 token，后续请求带：
 
 ```text
 Authorization: Bearer <token>
@@ -290,8 +287,8 @@ request 合法域名：https://mustdo.doebkblcya.com
 已完成：
 
 - FastAPI 后端项目结构。
-- SQLite schema 初始化 + 增量迁移（邀请码 type、待办 pinned 列自动补列）。
-- 用户名/密码登录和单次/长期邀请码注册。
+- SQLite schema 初始化 + 增量迁移（待办 pinned、微信身份和总额度列）。
+- 微信静默登录，首次登录自动开户并分配默认总额度。
 - Bearer Token 认证，disabled 用户 session 失效，启动时清理过期/撤销 session。
 - 待办按用户隔离。
 - 待办查询、编辑、删除、完成状态、置顶。
@@ -305,7 +302,6 @@ request 合法域名：https://mustdo.doebkblcya.com
 - 后续 tab 展开式月历：文案状态机入口、pending 圆点标记、覆盖式展示、日期筛选与今天/明天跳转。
 - 火山引擎录音文件极速版 ASR 封装（新旧版控制台认证兼容）。
 - DeepSeek JSON 解析封装（few-shot prompt + 动态日期，容错 fenced JSON 包裹，措辞兼容语音转写与键盘输入）。
-- 邀请码创建、查看、清空脚本。
 - 管理员后台（SQLAdmin + SQLAlchemy，挂载于同一 FastAPI 的 `/admin`）：独立管理员账号密码登录（PBKDF2 + `session_version` 失效机制）、用户/ASR 用量/AI 用量/管理员只读、服务配额可编辑、操作审计；配额预检与 ASR/AI 用量登记接入业务链路（原生 sqlite3）。
 - 后端单元测试 6 个文件 67 个用例。
 
@@ -319,7 +315,6 @@ request 合法域名：https://mustdo.doebkblcya.com
   - `test_deepseek.py`：thinking 禁用、fenced JSON、空内容、空 items
   - `test_errors.py`：统一错误模型与校验明细
 - 数据库初始化脚本和增量迁移。
-- 邀请码生成和列表脚本。
 - 待办保存逻辑。
 
 ## 已知限制
@@ -339,7 +334,7 @@ request 合法域名：https://mustdo.doebkblcya.com
 
 - 继续补测试：待办分组/时间规则、编辑和置顶交互、清理脚本。
 - 优化 prompt 测试样例，沉淀常见语音表达。
-- 增加简单的管理员脚本：重置密码、禁用用户、撤销邀请码。
+- 增加简单的管理员脚本：重置密码、禁用用户。
 
 中期：
 
@@ -365,7 +360,6 @@ cd backend
 cp .env.example .env          # 编辑 .env，填入 VOLC_API_KEY 和 DEEPSEEK_API_KEY
 uv sync
 uv run python scripts/init_db.py
-uv run python scripts/create_invite.py
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -381,28 +375,6 @@ scripts/server.sh stop
 ```
 
 `scripts/server.sh` 默认绑定 `0.0.0.0:8000`；运行日志在 `backend/logs/uvicorn.log`，pid 文件在 `backend/run/uvicorn.pid`。如需只允许本机反向代理访问，可用 `HOST=127.0.0.1 scripts/server.sh start`。
-
-创建邀请码：
-
-```bash
-cd backend
-uv run python scripts/create_invite.py          # 单次
-uv run python scripts/create_invite.py --type multi  # 长期
-```
-
-查看邀请码：
-
-```bash
-cd backend
-uv run python scripts/list_invites.py
-```
-
-清空邀请码：
-
-```bash
-cd backend
-uv run python scripts/clear_invites.py
-```
 
 清理：软删超 7 天 + 未软删且截止日期超 7 天（含已完成项）：
 

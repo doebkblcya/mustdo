@@ -10,7 +10,7 @@
     <label class="form-label">用户</label>
     <select name="user_id" class="form-select">
       {% for u in users %}
-      <option value="{{ u['id'] }}" {% if u['id'] == user_id %}selected{% endif %}>#{{ u['id'] }} {{ u['wechat_openid'] }}</option>
+      <option value="{{ u['id'] }}" {% if u['id'] == user_id %}selected{% endif %}>{{ u['admin_remark'] or ('用户 #' ~ u['id']) }} · {{ u['wechat_openid'] }}</option>
       {% endfor %}
     </select>
   </div>
@@ -34,7 +34,7 @@
 <div class="alert alert-warning">用户不存在。</div>
 {% else %}
 <div class="mb-2">
-  <strong>#{{ result.user_id }}</strong>
+  <strong>{{ result.admin_remark or ('用户 #' ~ result.user_id) }}</strong>
   <span class="text-muted">{{ result.openid }}</span>
   <span class="badge bg-secondary ms-2">{{ result.since_label }}</span>
 </div>

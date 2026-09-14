@@ -61,7 +61,10 @@ class UserDetailView(BaseView):
         return await self.templates.TemplateResponse(
             request,
             "admin/user_detail.html",
-            {"detail": detail, "title": f"用户 #{user_id}"},
+            {
+                "detail": detail,
+                "title": detail["user"].get("admin_remark") or f"用户 #{user_id}",
+            },
         )
 
 

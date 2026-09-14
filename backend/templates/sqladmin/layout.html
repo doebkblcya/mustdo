@@ -18,9 +18,6 @@
       <a class="mustdo-nav-item {% if current_path == '/admin/usage' %}active{% endif %}" href="{{ request.url_for('admin:view-usage-center') }}">
         <i class="fa-solid fa-chart-line"></i><span>用量</span>
       </a>
-      <a class="mustdo-nav-item {% if '/invite' in current_path %}active{% endif %}" href="{{ request.url_for('admin:list', identity='invite-code') }}">
-        <i class="fa-solid fa-ticket"></i><span>邀请码</span>
-      </a>
       <div class="mustdo-nav-label">排查</div>
       <a class="mustdo-nav-item {% if current_path == '/admin/diagnostics' %}active{% endif %}" href="{{ request.url_for('admin:view-diagnostics') }}">
         <i class="fa-solid fa-stethoscope"></i><span>诊断中心</span>

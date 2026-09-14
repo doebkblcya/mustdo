@@ -17,12 +17,9 @@ if ROOT not in sys.path:
 
 from app.config import get_settings  # noqa: E402
 from app.db import get_connection, init_db  # noqa: E402
-from app.routers.auth import me, wechat_login  # noqa: E402
+from app.routers.auth import me, my_quota, wechat_login  # noqa: E402
 from app.schemas import WechatLoginRequest  # noqa: E402
 from app.services.wechat import WechatLoginError, exchange_code_for_openid  # noqa: E402
-from app.time_utils import utcish_now_iso  # noqa: E402
-
-
 class WechatLoginAuthTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -48,7 +45,7 @@ class WechatLoginAuthTests(unittest.TestCase):
     def _db(self):
         return get_connection()
 
-    def test_first_login_creates_user_and_needs_invite(self) -> None:
+    def test_first_login_creates_user_and_default_quota(self) -> None:
         async def run():
             db = self._db()
             try:
@@ -58,23 +55,27 @@ class WechatLoginAuthTests(unittest.TestCase):
                 ):
                     result = await wechat_login(WechatLoginRequest(code="code1"), db=db)
                 row = db.execute(
-                    "SELECT id, wechat_openid, invite_redeemed_at FROM users WHERE id = ?",
+                    "SELECT id, wechat_openid FROM users WHERE id = ?",
+                    (result.user.id,),
+                ).fetchone()
+                quota = db.execute(
+                    "SELECT * FROM user_quotas WHERE user_id = ?",
                     (result.user.id,),
                 ).fetchone()
             finally:
                 db.close()
-            return result, row
+            return result, row, quota
 
-        result, row = asyncio.run(run())
+        result, row, quota = asyncio.run(run())
 
         self.assertTrue(result.user.id)
-        self.assertEqual(result.needs_invite, True)
         self.assertEqual(result.token_type, "bearer")
         self.assertTrue(result.token)
         self.assertEqual(row["wechat_openid"], "openid-abc")
-        self.assertIsNone(row["invite_redeemed_at"])
+        self.assertEqual(quota["asr_total_seconds"], 1200)
+        self.assertEqual(quota["ai_total_tokens"], 300000)
 
-    def test_same_openid_returns_same_user_and_skips_invite_after_redeem(self) -> None:
+    def test_same_openid_returns_same_user(self) -> None:
         async def run():
             db = self._db()
             try:
@@ -83,11 +84,6 @@ class WechatLoginAuthTests(unittest.TestCase):
                     AsyncMock(return_value="openid-abc"),
                 ):
                     first = await wechat_login(WechatLoginRequest(code="code1"), db=db)
-                db.execute(
-                    "UPDATE users SET invite_redeemed_at = ? WHERE id = ?",
-                    (utcish_now_iso(), first.user.id),
-                )
-                db.commit()
                 with patch(
                     "app.routers.auth.exchange_code_for_openid",
                     AsyncMock(return_value="openid-abc"),
@@ -100,7 +96,45 @@ class WechatLoginAuthTests(unittest.TestCase):
         first, second = asyncio.run(run())
 
         self.assertEqual(second.user.id, first.user.id)
-        self.assertEqual(second.needs_invite, False)
+
+    def test_quota_endpoint_reports_total_used_and_remaining(self) -> None:
+        async def run():
+            db = self._db()
+            try:
+                with patch(
+                    "app.routers.auth.exchange_code_for_openid",
+                    AsyncMock(return_value="openid-quota"),
+                ):
+                    result = await wechat_login(WechatLoginRequest(code="code1"), db=db)
+                db.execute(
+                    """
+                    INSERT INTO asr_usage
+                        (user_id, request_id, audio_seconds, status, duration_ms, created_at)
+                    VALUES (?, 'old-request', 600, 'success', 10, '2020-01-01T00:00:00')
+                    """,
+                    (result.user.id,),
+                )
+                db.execute(
+                    """
+                    INSERT INTO ai_usage
+                        (user_id, purpose, status, total_tokens, duration_ms, created_at)
+                    VALUES (?, 'parse', 'success', 30000, 10, '2020-01-01T00:00:00')
+                    """,
+                    (result.user.id,),
+                )
+                db.commit()
+                quota = my_quota(db=db, user={"id": result.user.id})
+            finally:
+                db.close()
+            return quota
+
+        quota = asyncio.run(run())
+        self.assertEqual(quota.asr.total_seconds, 1200)
+        self.assertEqual(quota.asr.used_seconds, 600)
+        self.assertEqual(quota.asr.remaining_seconds, 600)
+        self.assertEqual(quota.ai.total_tokens, 300000)
+        self.assertEqual(quota.ai.used_tokens, 30000)
+        self.assertEqual(quota.ai.remaining_tokens, 270000)
 
     def test_disabled_user_is_rejected(self) -> None:
         async def run():
@@ -197,8 +231,6 @@ class WechatServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.http_status, 500)
 
     def test_exchange_returns_openid_and_ignores_session_key(self) -> None:
-        from app.services.wechat import _wechat_client
-
         class FakeResp:
             def json(self):
                 return {"openid": "openid-xyz", "session_key": "SHOULD-BE-DISCARDED"}

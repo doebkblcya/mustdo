@@ -15,9 +15,7 @@ function getToken() {
 
 function setSession(auth) {
   wx.setStorageSync(TOKEN_KEY, auth.token);
-  var user = auth.user || {};
-  user.invited = !auth.needs_invite;
-  wx.setStorageSync(USER_KEY, user);
+  wx.setStorageSync(USER_KEY, auth.user || {});
 }
 
 function clearSession() {
@@ -123,18 +121,6 @@ function wechatLogin() {
   });
 }
 
-function redeemInvite(code) {
-  return request("/api/invites/redeem", {
-    method: "POST",
-    data: { code: code }
-  }).then(function(result) {
-    var user = getStoredUser() || {};
-    user.invited = true;
-    wx.setStorageSync(USER_KEY, user);
-    return result;
-  });
-}
-
 function listTodos() {
   return request("/api/todos");
 }
@@ -183,6 +169,10 @@ function organizeTodos(data) {
     method: "POST",
     data: data
   });
+}
+
+function getQuota() {
+  return request("/api/me/quota");
 }
 
 function uploadVoice(filePath, onUploaded) {
@@ -367,7 +357,7 @@ module.exports = {
   getStoredUser: getStoredUser,
   clearSession: clearSession,
   wechatLogin: wechatLogin,
-  redeemInvite: redeemInvite,
+  getQuota: getQuota,
   listTodos: listTodos,
   updateTodo: updateTodo,
   deleteTodo: deleteTodo,

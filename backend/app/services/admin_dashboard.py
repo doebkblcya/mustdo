@@ -160,7 +160,7 @@ def collect_dashboard(db: sqlite3.Connection, days: int) -> dict[str, Any]:
         for row in db.execute(
             """
             SELECT r.id, r.user_id, r.error_code, r.updated_at,
-                   u.wechat_openid, t.content
+                   u.wechat_openid, u.admin_remark, t.content
             FROM todo_reminders r
             JOIN users u ON u.id = r.user_id
             JOIN todos t ON t.id = r.todo_id
@@ -199,7 +199,7 @@ def _top_users(db: sqlite3.Connection, since: str | None) -> list[dict[str, Any]
     params: list[Any] = [] if since is None else [since, since]
     rows = db.execute(
         f"""
-        SELECT u.id AS user_id, u.wechat_openid,
+        SELECT u.id AS user_id, u.wechat_openid, u.admin_remark,
                COALESCE(a.seconds, 0) AS asr_seconds,
                COALESCE(i.tokens, 0) AS ai_tokens,
                COALESCE(a.calls, 0) + COALESCE(i.calls, 0) AS calls
@@ -221,39 +221,37 @@ def _top_users(db: sqlite3.Connection, since: str | None) -> list[dict[str, Any]
 
 
 def _quota_alerts(db: sqlite3.Connection) -> list[dict[str, Any]]:
-    day_start = f"{today_date().isoformat()}T00:00:00"
     rows = db.execute(
         """
         WITH a AS (
             SELECT user_id, SUM(audio_seconds) AS used FROM asr_usage
-            WHERE created_at >= ? GROUP BY user_id
+            GROUP BY user_id
         ), i AS (
             SELECT user_id, SUM(total_tokens) AS used FROM ai_usage
-            WHERE created_at >= ? GROUP BY user_id
+            GROUP BY user_id
         )
-        SELECT u.id AS user_id, u.wechat_openid,
-               q.asr_daily_seconds, q.ai_daily_tokens,
+        SELECT u.id AS user_id, u.wechat_openid, u.admin_remark,
+               q.asr_total_seconds, q.ai_total_tokens,
                COALESCE(a.used, 0) AS asr_used, COALESCE(i.used, 0) AS ai_used
         FROM user_quotas q
         JOIN users u ON u.id = q.user_id
         LEFT JOIN a ON a.user_id = q.user_id
         LEFT JOIN i ON i.user_id = q.user_id
-        WHERE (q.asr_daily_seconds > 0 AND COALESCE(a.used, 0) >= q.asr_daily_seconds * 0.8)
-           OR (q.ai_daily_tokens > 0 AND COALESCE(i.used, 0) >= q.ai_daily_tokens * 0.8)
+        WHERE (q.asr_total_seconds > 0 AND COALESCE(a.used, 0) >= q.asr_total_seconds * 0.8)
+           OR (q.ai_total_tokens > 0 AND COALESCE(i.used, 0) >= q.ai_total_tokens * 0.8)
         ORDER BY MAX(
-            CASE WHEN q.asr_daily_seconds > 0 THEN COALESCE(a.used, 0) / q.asr_daily_seconds ELSE 0 END,
-            CASE WHEN q.ai_daily_tokens > 0 THEN CAST(COALESCE(i.used, 0) AS REAL) / q.ai_daily_tokens ELSE 0 END
+            CASE WHEN q.asr_total_seconds > 0 THEN COALESCE(a.used, 0) / q.asr_total_seconds ELSE 0 END,
+            CASE WHEN q.ai_total_tokens > 0 THEN CAST(COALESCE(i.used, 0) AS REAL) / q.ai_total_tokens ELSE 0 END
         ) DESC
         LIMIT 6
-        """,
-        (day_start, day_start),
+        """
     ).fetchall()
     result = []
     for row in rows:
         item = dict(row)
         item["openid_masked"] = mask_openid(row["wechat_openid"])
-        item["asr_ratio"] = _ratio(row["asr_used"], row["asr_daily_seconds"])
-        item["ai_ratio"] = _ratio(row["ai_used"], row["ai_daily_tokens"])
+        item["asr_ratio"] = _ratio(row["asr_used"], row["asr_total_seconds"])
+        item["ai_ratio"] = _ratio(row["ai_used"], row["ai_total_tokens"])
         item["max_ratio"] = max(item["asr_ratio"], item["ai_ratio"])
         result.append(item)
     return result
@@ -294,9 +292,11 @@ def list_users(
     params: list[Any] = [day_start, day_start, day_start]
     query = query.strip()
     if query:
-        filters.append("(wechat_openid LIKE ? OR CAST(user_id AS TEXT) LIKE ?)")
+        filters.append(
+            "(wechat_openid LIKE ? OR admin_remark LIKE ? OR CAST(user_id AS TEXT) LIKE ?)"
+        )
         term = f"%{query}%"
-        params.extend((term, term))
+        params.extend((term, term, term))
     if status != "all":
         filters.append("status = ?")
         params.append(status)
@@ -339,11 +339,11 @@ def list_users(
 
 def _user_listing_sql() -> str:
     return """
-        WITH a AS (
-            SELECT user_id, SUM(audio_seconds) AS used, COUNT(*) AS calls
+        WITH at AS (
+            SELECT user_id, COUNT(*) AS calls
             FROM asr_usage WHERE created_at >= ? GROUP BY user_id
-        ), i AS (
-            SELECT user_id, SUM(total_tokens) AS used, COUNT(*) AS calls
+        ), it AS (
+            SELECT user_id, COUNT(*) AS calls
             FROM ai_usage WHERE created_at >= ? GROUP BY user_id
         ), r AS (
             SELECT user_id,
@@ -354,22 +354,29 @@ def _user_listing_sql() -> str:
             SELECT user_id, COUNT(*) AS total,
                    SUM(CASE WHEN status = 'pending' AND deleted_at IS NULL THEN 1 ELSE 0 END) AS pending
             FROM todos GROUP BY user_id
+        ), a AS (
+            SELECT user_id, SUM(audio_seconds) AS used FROM asr_usage GROUP BY user_id
+        ), i AS (
+            SELECT user_id, SUM(total_tokens) AS used FROM ai_usage GROUP BY user_id
         )
-        SELECT u.id AS user_id, u.wechat_openid, u.status, u.created_at, u.last_login_at,
+        SELECT u.id AS user_id, u.wechat_openid, u.admin_remark,
+               u.status, u.created_at, u.last_login_at,
                q.id AS quota_id, COALESCE(q.asr_enabled, 1) AS asr_enabled,
-               COALESCE(q.asr_daily_seconds, 0) AS asr_limit,
+               COALESCE(q.asr_total_seconds, 0) AS asr_limit,
                COALESCE(q.ai_enabled, 1) AS ai_enabled,
-               COALESCE(q.ai_daily_tokens, 0) AS ai_limit,
-               COALESCE(a.used, 0) AS asr_used, COALESCE(a.calls, 0) AS asr_calls,
-               COALESCE(i.used, 0) AS ai_used, COALESCE(i.calls, 0) AS ai_calls,
+               COALESCE(q.ai_total_tokens, 0) AS ai_limit,
+               COALESCE(a.used, 0) AS asr_used, COALESCE(at.calls, 0) AS asr_calls,
+               COALESCE(i.used, 0) AS ai_used, COALESCE(it.calls, 0) AS ai_calls,
                COALESCE(r.sent, 0) AS reminder_sent, COALESCE(r.failed, 0) AS reminder_failed,
                COALESCE(t.total, 0) AS todo_total, COALESCE(t.pending, 0) AS todo_pending
         FROM users u
         LEFT JOIN user_quotas q ON q.user_id = u.id
-        LEFT JOIN a ON a.user_id = u.id
-        LEFT JOIN i ON i.user_id = u.id
+        LEFT JOIN at ON at.user_id = u.id
+        LEFT JOIN it ON it.user_id = u.id
         LEFT JOIN r ON r.user_id = u.id
         LEFT JOIN t ON t.user_id = u.id
+        LEFT JOIN a ON a.user_id = u.id
+        LEFT JOIN i ON i.user_id = u.id
     """
 
 
@@ -379,9 +386,9 @@ def get_user_detail(db: sqlite3.Connection, user_id: int, days: int) -> dict[str
     row = db.execute(
         """
         SELECT u.*, q.id AS quota_id, COALESCE(q.asr_enabled, 1) AS asr_enabled,
-               COALESCE(q.asr_daily_seconds, 0) AS asr_limit,
+               COALESCE(q.asr_total_seconds, 0) AS asr_limit,
                COALESCE(q.ai_enabled, 1) AS ai_enabled,
-               COALESCE(q.ai_daily_tokens, 0) AS ai_limit,
+               COALESCE(q.ai_total_tokens, 0) AS ai_limit,
                q.updated_at AS quota_updated_at
         FROM users u LEFT JOIN user_quotas q ON q.user_id = u.id
         WHERE u.id = ?
@@ -427,10 +434,15 @@ def get_user_detail(db: sqlite3.Connection, user_id: int, days: int) -> dict[str
         SELECT username, action, target_type, target_id, detail, created_at
         FROM admin_audit_logs
         WHERE (target_type IN ('user-quota', 'user_quotas') AND target_id = ?)
+           OR (target_type = 'user' AND target_id = ?)
            OR detail LIKE ?
         ORDER BY created_at DESC LIMIT 10
         """,
-            (str(user.get("quota_id") or ""), f'%"user_id": {user_id}%'),
+            (
+                str(user.get("quota_id") or ""),
+                str(user_id),
+                f'%"user_id": {user_id}%',
+            ),
         ).fetchall()
     ]
     return {
@@ -461,10 +473,11 @@ def list_diagnostics(
         filters, params = [], []
         if query:
             filters.append(
-                "(t.content LIKE ? OR u.wechat_openid LIKE ? OR CAST(r.user_id AS TEXT) LIKE ?)"
+                "(t.content LIKE ? OR u.wechat_openid LIKE ? OR u.admin_remark LIKE ?"
+                " OR CAST(r.user_id AS TEXT) LIKE ?)"
             )
             term = f"%{query}%"
-            params.extend((term, term, term))
+            params.extend((term, term, term, term))
         if status != "all":
             filters.append("r.status = ?")
             params.append(status)
@@ -480,7 +493,8 @@ def list_diagnostics(
         rows = db.execute(
             f"""
             SELECT r.id, r.user_id, r.remind_at, r.status, r.sent_at, r.error_code,
-                   r.updated_at, t.id AS todo_id, t.content, u.wechat_openid
+                   r.updated_at, t.id AS todo_id, t.content,
+                   u.wechat_openid, u.admin_remark
             FROM todo_reminders r JOIN todos t ON t.id=r.todo_id
             JOIN users u ON u.id=r.user_id {where}
             ORDER BY r.updated_at DESC LIMIT ? OFFSET ?
@@ -499,10 +513,11 @@ def list_diagnostics(
         filters, params = [], []
         if query:
             filters.append(
-                "(t.content LIKE ? OR u.wechat_openid LIKE ? OR CAST(t.user_id AS TEXT) LIKE ?)"
+                "(t.content LIKE ? OR u.wechat_openid LIKE ? OR u.admin_remark LIKE ?"
+                " OR CAST(t.user_id AS TEXT) LIKE ?)"
             )
             term = f"%{query}%"
-            params.extend((term, term, term))
+            params.extend((term, term, term, term))
         if status == "deleted":
             filters.append("t.deleted_at IS NOT NULL")
         elif status != "all":
@@ -519,7 +534,8 @@ def list_diagnostics(
         rows = db.execute(
             f"""
             SELECT t.id, t.user_id, t.content, t.due_date, t.due_time, t.status,
-                   t.pinned, t.deleted_at, t.updated_at, u.wechat_openid,
+                   t.pinned, t.deleted_at, t.updated_at,
+                   u.wechat_openid, u.admin_remark,
                    r.status AS reminder_status
             FROM todos t JOIN users u ON u.id=t.user_id
             LEFT JOIN todo_reminders r ON r.todo_id=t.id {where}

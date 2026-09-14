@@ -35,7 +35,7 @@ class UserUsageView(BaseView):
 
         with get_connection() as db:
             users = db.execute(
-                "SELECT id, wechat_openid FROM users ORDER BY id"
+                "SELECT id, wechat_openid, admin_remark FROM users ORDER BY id"
             ).fetchall()
             result = collect_user_usage(db, user_id, days) if user_id is not None else None
 

@@ -1,8 +1,8 @@
 """Read-only aggregation for the admin usage-summary page.
 
 Runs over a native ``sqlite3.Connection`` (consistent with the business API and
-the rest of the metering path). Semantics mirror ``quota.py``: a limit of 0
-means unlimited; the day is the Shanghai calendar day.
+the rest of the metering path). Quotas and service usage are lifetime totals;
+reminder counters cover the current Shanghai calendar day.
 """
 
 from __future__ import annotations
@@ -17,17 +17,16 @@ def _day_start() -> str:
 
 
 def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
-    """One row per user with today's ASR/AI usage, limit and remaining.
+    """One row per user with total ASR/AI usage, limit and remaining.
 
-    Returns rows covering every user that has a quota row, is active, or has any
-    usage today. Users with no quota and no usage are omitted (the page lists
-    users you actually manage).
+    Active users with a quota row or recorded activity are included. Users with
+    neither a quota nor any activity are omitted.
     """
     day_start = _day_start()
 
     users = db.execute(
         """
-        SELECT u.id, u.wechat_openid, u.status
+        SELECT u.id, u.wechat_openid, u.admin_remark, u.status
         FROM users u
         LEFT JOIN user_quotas q ON q.user_id = u.id
         WHERE u.status = 'active'
@@ -42,7 +41,7 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
         (day_start, day_start, day_start),
     ).fetchall()
 
-    asr_today = {
+    asr_total = {
         int(r["user_id"]): r
         for r in db.execute(
             """
@@ -51,13 +50,11 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
                    COUNT(*) AS calls,
                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success
             FROM asr_usage
-            WHERE created_at >= ?
             GROUP BY user_id
-            """,
-            (day_start,),
+            """
         ).fetchall()
     }
-    ai_today = {
+    ai_total = {
         int(r["user_id"]): r
         for r in db.execute(
             """
@@ -66,10 +63,8 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
                    COUNT(*) AS calls,
                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success
             FROM ai_usage
-            WHERE created_at >= ?
             GROUP BY user_id
-            """,
-            (day_start,),
+            """
         ).fetchall()
     }
     reminder_today = {
@@ -95,12 +90,12 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
     for user in users:
         uid = int(user["id"])
         quota = quotas.get(uid)
-        asr = asr_today.get(uid)
-        ai = ai_today.get(uid)
+        asr = asr_total.get(uid)
+        ai = ai_total.get(uid)
         rem = reminder_today.get(uid)
 
-        asr_limit = float(quota["asr_daily_seconds"]) if quota else 0.0
-        ai_limit = int(quota["ai_daily_tokens"]) if quota else 0
+        asr_limit = float(quota["asr_total_seconds"]) if quota else 0.0
+        ai_limit = int(quota["ai_total_tokens"]) if quota else 0
         asr_used = float(asr["used_seconds"]) if asr else 0.0
         ai_used = int(ai["used_tokens"]) if ai else 0
 
@@ -108,6 +103,7 @@ def collect_usage_summary(db: sqlite3.Connection) -> list[dict[str, object]]:
             {
                 "user_id": uid,
                 "openid": user["wechat_openid"],
+                "admin_remark": user["admin_remark"],
                 "status": user["status"],
                 "asr_enabled": bool(quota["asr_enabled"]) if quota else True,
                 "asr_used_seconds": asr_used,

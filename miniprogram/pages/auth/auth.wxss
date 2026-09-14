@@ -88,133 +88,13 @@ page {
   transition: transform 80ms ease-out, opacity 80ms ease-out;
 }
 
-.auth-retry::after,
-.auth-submit::after {
+.auth-retry::after {
   display: none;
 }
 
-.auth-retry:active,
-.auth-submit:active {
+.auth-retry:active {
   transform: scale(0.96);
   opacity: 0.9;
-}
-
-/* 邀请码页面 */
-.auth-invite {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  padding: 152rpx 40rpx calc(32rpx + constant(safe-area-inset-bottom));
-  padding: 152rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
-  box-sizing: border-box;
-}
-
-.auth-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.auth-title,
-.auth-description {
-  display: block;
-}
-
-.auth-title text {
-  display: block;
-}
-
-.auth-title {
-  color: #1a1c1c;
-  font-size: 68rpx;
-  font-weight: 700;
-  line-height: 82rpx;
-  letter-spacing: -0.02em;
-}
-
-.auth-description {
-  color: #4c4546;
-  font-size: 34rpx;
-  font-weight: 400;
-  line-height: 44rpx;
-  letter-spacing: -0.01em;
-}
-
-.auth-form {
-  margin-top: 64rpx;
-}
-
-.auth-input {
-  width: 100%;
-  height: 112rpx;
-  padding: 0 48rpx;
-  border: 2rpx solid transparent;
-  border-radius: 9999rpx;
-  background: #f3f3f4;
-  box-sizing: border-box;
-  color: #1a1c1c;
-  font-size: 34rpx;
-  line-height: 112rpx;
-  transition: background 160ms ease, border-color 160ms ease;
-}
-
-.auth-input:focus {
-  border-color: #000000;
-  background: #eeeeee;
-}
-
-.auth-placeholder {
-  color: rgba(76, 69, 70, 0.5);
-}
-
-.auth-error-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-height: 36rpx;
-  margin-top: 16rpx;
-  opacity: 0;
-  transform: translateY(-8rpx);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.auth-error-row--visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.auth-error-icon {
-  width: 28rpx;
-  height: 28rpx;
-}
-
-.auth-error {
-  color: #ba1a1a;
-  font-size: 26rpx;
-  line-height: 36rpx;
-}
-
-.auth-submit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 112rpx;
-  margin-top: auto;
-  padding: 0;
-  border-radius: 48rpx;
-  background: #000000;
-  color: #ffffff;
-  font-size: 40rpx;
-  font-weight: 600;
-  line-height: 112rpx;
-  text-align: center;
-  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, 0.1);
-  transition: transform 80ms ease-out, opacity 80ms ease-out;
-}
-
-.auth-submit[disabled] {
-  opacity: 0.8;
 }
 
 @keyframes auth-spin {

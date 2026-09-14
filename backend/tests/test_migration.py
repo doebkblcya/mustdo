@@ -125,12 +125,12 @@ class LegacyMigrationTests(unittest.TestCase):
             users = conn.execute("SELECT * FROM users").fetchall()
             todos = conn.execute("SELECT * FROM todos").fetchall()
             sessions = conn.execute("SELECT * FROM sessions").fetchall()
-            invite_used = conn.execute(
-                "SELECT used_by_user_id, used_at FROM invite_codes"
-            ).fetchall()
             user_cols = [
                 c[1] for c in conn.execute("PRAGMA table_info('users')").fetchall()
             ]
+            invite_table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'invite_codes'"
+            ).fetchone()
         finally:
             conn.close()
 
@@ -141,8 +141,8 @@ class LegacyMigrationTests(unittest.TestCase):
             [
                 "id",
                 "wechat_openid",
+                "admin_remark",
                 "status",
-                "invite_redeemed_at",
                 "created_at",
                 "updated_at",
                 "last_login_at",
@@ -151,9 +151,115 @@ class LegacyMigrationTests(unittest.TestCase):
         # no orphaned todos / sessions pointing at a reused id
         self.assertEqual(len(todos), 0)
         self.assertEqual(len(sessions), 0)
-        # invite usage detached so a new user with the same id does not inherit it
-        self.assertTrue(all(row["used_by_user_id"] is None for row in invite_used))
-        self.assertTrue(all(row["used_at"] is None for row in invite_used))
+        self.assertIsNone(invite_table)
+
+    def test_current_schema_removes_gate_and_converts_daily_limits_to_totals(self) -> None:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    wechat_openid TEXT UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    invite_redeemed_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_login_at TEXT
+                );
+                CREATE TABLE invite_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code_hash TEXT NOT NULL UNIQUE,
+                    type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT
+                );
+                CREATE TABLE user_quotas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    asr_enabled INTEGER NOT NULL DEFAULT 1,
+                    asr_daily_seconds REAL NOT NULL DEFAULT 0,
+                    ai_enabled INTEGER NOT NULL DEFAULT 1,
+                    ai_daily_tokens INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE admin_audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id INTEGER,
+                    action TEXT NOT NULL,
+                    target_type TEXT,
+                    target_id INTEGER,
+                    detail TEXT,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO users
+                    (wechat_openid, status, invite_redeemed_at, created_at, updated_at)
+                VALUES
+                    ('openid-1', 'active', 'now', 'now', 'now'),
+                    ('openid-2', 'active', NULL, 'now', 'now');
+                INSERT INTO invite_codes (code_hash, type, status, created_at)
+                VALUES ('hash1', 'single', 'active', 'now');
+                INSERT INTO user_quotas
+                    (user_id, asr_daily_seconds, ai_daily_tokens, created_at, updated_at)
+                VALUES (1, 0, 0, 'now', 'now');
+                INSERT INTO sessions (user_id, token_hash, created_at, expires_at)
+                VALUES (2, 'unadmitted-session', 'now', '2099-01-01T00:00:00');
+                INSERT INTO admin_audit_logs
+                    (action, target_type, detail, created_at)
+                VALUES
+                    ('create', 'invite_code', 'created invite', 'now'),
+                    ('login', 'admin', 'normal record', 'now');
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        init_db()
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            user_cols = [row[1] for row in conn.execute("PRAGMA table_info('users')")]
+            quota_cols = [row[1] for row in conn.execute("PRAGMA table_info('user_quotas')")]
+            quotas = conn.execute(
+                "SELECT * FROM user_quotas ORDER BY user_id"
+            ).fetchall()
+            users = conn.execute("SELECT id FROM users ORDER BY id").fetchall()
+            unadmitted_sessions = conn.execute(
+                "SELECT id FROM sessions WHERE user_id = 2"
+            ).fetchall()
+            invite_table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'invite_codes'"
+            ).fetchone()
+            audit_rows = conn.execute(
+                "SELECT target_type, detail FROM admin_audit_logs ORDER BY id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        self.assertNotIn("invite_redeemed_at", user_cols)
+        self.assertIn("admin_remark", user_cols)
+        self.assertIn("asr_total_seconds", quota_cols)
+        self.assertIn("ai_total_tokens", quota_cols)
+        self.assertNotIn("asr_daily_seconds", quota_cols)
+        self.assertNotIn("ai_daily_tokens", quota_cols)
+        self.assertEqual([row["id"] for row in users], [1])
+        self.assertEqual(unadmitted_sessions, [])
+        self.assertEqual(len(quotas), 1)
+        self.assertTrue(all(row["asr_total_seconds"] == 1200 for row in quotas))
+        self.assertTrue(all(row["ai_total_tokens"] == 300000 for row in quotas))
+        self.assertIsNone(invite_table)
+        self.assertEqual([(row["target_type"], row["detail"]) for row in audit_rows], [("admin", "normal record")])
 
 
 if __name__ == "__main__":

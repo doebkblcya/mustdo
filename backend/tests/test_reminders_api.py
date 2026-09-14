@@ -59,10 +59,10 @@ class ReminderApiTests(unittest.TestCase):
         try:
             cursor = db.execute(
                 """
-                INSERT INTO users (wechat_openid, status, invite_redeemed_at, created_at, updated_at)
-                VALUES (?, 'active', ?, ?, ?)
+                INSERT INTO users (wechat_openid, status, created_at, updated_at)
+                VALUES (?, 'active', ?, ?)
                 """,
-                (openid, now_iso, now_iso, now_iso),
+                (openid, now_iso, now_iso),
             )
             user_id = int(cursor.lastrowid)
             db.execute(
@@ -180,7 +180,7 @@ class ReminderApiTests(unittest.TestCase):
     def test_put_rejects_foreign_todo(self) -> None:
         user_id = self._seed_user_with_session("openid-api")
         self._seed_todo(user_id)
-        # 另一个用户（无 session，无邀请码）：其待办对当前 token 不可见
+        # 另一个用户（无 session）：其待办对当前 token 不可见
         now = now_shanghai().isoformat(timespec="seconds")
         db = get_connection()
         try:

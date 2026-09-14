@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from time import perf_counter
 from contextlib import asynccontextmanager
+from time import perf_counter
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -11,11 +11,10 @@ from fastapi.exceptions import RequestValidationError
 from app.admin import mount_admin
 from app.db import cleanup_sessions, init_db
 from app.errors import http_exception_handler, validation_exception_handler
-from app.routers import auth, invites, reminders, todos, trash, voice
+from app.routers import auth, reminders, todos, trash, voice
 from app.services.deepseek import close_deepseek_client
 from app.services.scheduler import reminder_loop
 from app.services.wechat import close_wechat_client
-
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -62,7 +61,6 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(auth.router)
-    app.include_router(invites.router)
     app.include_router(todos.router)
     app.include_router(reminders.router)
     app.include_router(trash.router)

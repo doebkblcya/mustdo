@@ -39,7 +39,7 @@
     <div class="md-panel-body">
       {% if dashboard.failures %}<ul class="md-feed">
       {% for item in dashboard.failures %}
-        <li><span class="md-feed-icon"><i class="fa-solid fa-bell-slash"></i></span><div class="md-feed-content"><div class="md-feed-title">{{ item.content }}</div><div class="md-feed-meta">用户 #{{ item.user_id }} · {{ item.error_label }} · {{ item.updated_at[:16]|replace('T', ' ') }}</div></div></li>
+        <li><span class="md-feed-icon"><i class="fa-solid fa-bell-slash"></i></span><div class="md-feed-content"><div class="md-feed-title">{{ item.content }}</div><div class="md-feed-meta">{{ item.admin_remark or ('用户 #' ~ item.user_id) }} · {{ item.error_label }} · {{ item.updated_at[:16]|replace('T', ' ') }}</div></div></li>
       {% endfor %}
       </ul>{% else %}<div class="md-empty">暂时没有提醒失败，运行正常</div>{% endif %}
     </div>
@@ -50,15 +50,15 @@
   <div class="md-card">
     <div class="md-panel-head"><h2>活跃用户排行</h2><a href="{{ request.url_for('admin:view-users-hub') }}">全部用户</a></div>
     {% if dashboard.top_users %}<div class="md-table-wrap"><table class="md-table"><thead><tr><th>用户</th><th class="num">调用</th><th class="num">ASR 秒数</th><th class="num">AI Token</th></tr></thead><tbody>
-    {% for item in dashboard.top_users %}<tr><td><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">#{{ item.user_id }}</a><div class="md-muted">{{ item.openid_masked }}</div></td><td class="num">{{ item.calls }}</td><td class="num">{{ "%.1f"|format(item.asr_seconds) }}</td><td class="num">{{ "{:,}".format(item.ai_tokens) }}</td></tr>{% endfor %}
+    {% for item in dashboard.top_users %}<tr><td><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">{{ item.admin_remark or ('用户 #' ~ item.user_id) }}</a><div class="md-muted">#{{ item.user_id }} · {{ item.openid_masked }}</div></td><td class="num">{{ item.calls }}</td><td class="num">{{ "%.1f"|format(item.asr_seconds) }}</td><td class="num">{{ "{:,}".format(item.ai_tokens) }}</td></tr>{% endfor %}
     </tbody></table></div>{% else %}<div class="md-empty">该时间范围内没有服务调用</div>{% endif %}
   </div>
   <div class="md-card">
-    <div class="md-panel-head"><h2>接近今日限额</h2><a href="{{ request.url_for('admin:view-users-hub').include_query_params(usage='near') }}">筛选用户</a></div>
+    <div class="md-panel-head"><h2>接近总额度</h2><a href="{{ request.url_for('admin:view-users-hub').include_query_params(usage='near') }}">筛选用户</a></div>
     <div class="md-panel-body">
       {% if dashboard.quota_alerts %}<ul class="md-feed">
       {% for item in dashboard.quota_alerts %}
-        <li><span class="md-feed-icon" style="background:var(--md-warn-soft);color:var(--md-warn)"><i class="fa-solid fa-gauge-high"></i></span><div class="md-feed-content"><div class="md-feed-title"><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">用户 #{{ item.user_id }}</a></div><div class="md-feed-meta">ASR {{ item.asr_ratio }}% · AI {{ item.ai_ratio }}%</div></div></li>
+        <li><span class="md-feed-icon" style="background:var(--md-warn-soft);color:var(--md-warn)"><i class="fa-solid fa-gauge-high"></i></span><div class="md-feed-content"><div class="md-feed-title"><a class="row-link" href="{{ request.url_for('admin:view-user-detail', user_id=item.user_id) }}">{{ item.admin_remark or ('用户 #' ~ item.user_id) }}</a></div><div class="md-feed-meta">用户 #{{ item.user_id }} · ASR {{ item.asr_ratio }}% · AI {{ item.ai_ratio }}%</div></div></li>
       {% endfor %}
       </ul>{% else %}<div class="md-empty">目前没有用户接近限额</div>{% endif %}
     </div>

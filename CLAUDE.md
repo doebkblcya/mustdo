@@ -20,7 +20,7 @@ mustdo/
 │   │   ├── main.py, config.py, db.py, deps.py, errors.py, schemas.py, security.py, time_utils.py
 │   │   ├── routers/  (auth.py, todos.py, voice.py)
 │   │   └── services/ (audio.py, asr.py, deepseek.py, todos.py)
-│   ├── scripts/  (init_db.py, create_invite.py, list_invites.py, clear_invites.py, cleanup_overdue.py, server.sh)
+│   ├── scripts/  (init_db.py, cleanup_overdue.py, create_admin.py, server.sh)
 │   └── tests/  (test_auth.py, test_todos_api.py, test_voice.py, test_deepseek.py, test_errors.py)
 ├── miniprogram/
 │   ├── app.js/json/wxss, config.js
@@ -38,15 +38,15 @@ pyproject 中 `websockets` 是讯飞流式方案遗留依赖（未使用，可�
 ### 数据库 Schema
 
 ```sql
-users (id, username, username_normalized UNIQUE, password_hash, status, ...)
+users (id, wechat_openid UNIQUE, admin_remark?, status, ...)
   status: 'active' | 'disabled'
 
-invite_codes (id, code_hash UNIQUE, type, status, label, ...)
-  type: 'single' | 'multi'
-  status: 'active' | 'redeemed' | 'revoked'
-  single 使用后→redeemed；multi 保持 active
-
 sessions (id, user_id FK, token_hash UNIQUE, created_at, expires_at, revoked_at)
+
+user_quotas (user_id UNIQUE, asr_enabled, asr_total_seconds, ai_enabled, ai_total_tokens, ...)
+  总额度 0 表示不限；新用户默认 1200 秒 ASR + 300000 AI tokens
+
+`users.admin_remark` 是仅管理后台可编辑的私有备注，最长 40 字，不通过业务 API 返回。
 
 todos (id, user_id FK, content, due_date, due_time?, pinned, status, deleted_at?, ...)
   status: 'pending' | 'done'
@@ -58,7 +58,7 @@ todos (id, user_id FK, content, due_date, due_time?, pinned, status, deleted_at?
 Asia/Shanghai，ISO 字符串存储。`today_date()`, `tomorrow_date()`, `utcish_now_iso()`
 
 ### 认证
-Bearer Token。注册需 `username + password + invite_code`，邀请码 hash 比对。密码 `pbkdf2_sha256`（210,000 迭代）。Token/session 存 hmac-sha256 hash。
+小程序通过微信 `code` 换取 OpenID，首次登录自动创建用户并签发 Bearer Token。Token/session 存 HMAC-SHA256 hash；禁用用户的已有 session 立即失效。
 
 ### 待办规则
 - 每条必有 `due_date`，无声明→今天。模糊日期（"有空""回头"）→今天
@@ -81,10 +81,9 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/auth/token/register` | 注册 |
-| POST | `/api/auth/token/login` | 登录 |
-| POST | `/api/auth/logout` | 登出 |
+| POST | `/api/auth/wechat` | 微信静默登录，首次登录自动开户 |
 | GET | `/api/me` | 当前用户 |
+| GET | `/api/me/quota` | 总额度、已用量与剩余量 |
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/todos` | 分组待办 |
 | PATCH | `/api/todos/{id}` | 编辑（content/due_date/due_time/status/pinned） |
@@ -107,7 +106,7 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 
 ### 代码约定
 - 数据库：`Depends(get_db)` 在路由中获取连接。简单操作用 `execute()+commit()`，多步用 `BEGIN IMMEDIATE`→`commit()`/`rollback()`
-- 安全：邀请码/密码/token 均不存明文。邀请码格式 `TODO-S/M-XXXX-XXXX-XXXX`，字母表排除 `0OI1`
+- 安全：微信 OpenID 仅作身份标识；session token 只存 HMAC-SHA256 hash
 - 测试：`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -v`（5 个文件 25 个用例：认证/待办/语音/DeepSeek/错误模型）。临时 SQLite + env patch
 
 ## 小程序
@@ -176,5 +175,5 @@ Bearer Token。注册需 `username + password + invite_code`，邀请码 hash �
 - Swipe `setData` 路径：`items[X].swipeX`，读 `this.data.items[index].swipeX`
 
 ## 已知限制
-- 自动化测试少，无忘记密码；管理后台（/admin/）已具备账号/配额/用量/提醒/邀请码/待办(只读)管理（提醒与待办为只读诊断视图），但管理员创建/改密仍需 CLI（scripts/create_admin.py）
+- 管理后台（/admin/）已具备账号/总配额/用量/提醒/待办管理（提醒与待办为只读诊断视图），管理员创建/改密仍需 CLI（scripts/create_admin.py）
 - 语音只支持新增，SQLite 适合 MVP

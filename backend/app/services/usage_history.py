@@ -33,7 +33,7 @@ def collect_user_usage(
     breakdown; asr/ai are None when the user does not exist.
     """
     user = db.execute(
-        "SELECT id, wechat_openid, status FROM users WHERE id = ?",
+        "SELECT id, wechat_openid, admin_remark, status FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     if user is None:
@@ -119,6 +119,7 @@ def collect_user_usage(
     return {
         "user_id": user_id,
         "openid": user["wechat_openid"],
+        "admin_remark": user["admin_remark"],
         "days": days,
         "since_label": since_label,
         "asr": {

@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.time_utils import today_date
 
-
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -20,15 +19,31 @@ class WechatLoginRequest(BaseModel):
     code: str = Field(min_length=1, max_length=256)
 
 
-class InviteRedeemRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=128)
-
-
 class AuthTokenResponse(BaseModel):
     user: UserPublic
     token: str
     token_type: Literal["bearer"] = "bearer"
-    needs_invite: bool
+
+
+class AsrQuotaPublic(BaseModel):
+    enabled: bool
+    total_seconds: float
+    used_seconds: float
+    remaining_seconds: float | None
+    unlimited: bool
+
+
+class AiQuotaPublic(BaseModel):
+    enabled: bool
+    total_tokens: int
+    used_tokens: int
+    remaining_tokens: int | None
+    unlimited: bool
+
+
+class QuotaPublicResponse(BaseModel):
+    asr: AsrQuotaPublic
+    ai: AiQuotaPublic
 
 
 class ReminderPublic(BaseModel):

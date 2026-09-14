@@ -3,16 +3,17 @@
 {% block content %}
 <section class="md-profile">
   <span class="md-avatar">{{ detail.user.id }}</span>
-  <div><h1>用户 #{{ detail.user.id }}</h1><p>{{ detail.user.openid_masked }} · 注册于 {{ detail.user.created_at[:16]|replace('T',' ') }}</p></div>
+  <div><h1>{{ detail.user.admin_remark or ('用户 #' ~ detail.user.id) }}</h1><p>用户 #{{ detail.user.id }} · {{ detail.user.openid_masked }} · 注册于 {{ detail.user.created_at[:16]|replace('T',' ') }}</p></div>
   <div class="md-profile-actions">
     <a class="btn btn-outline-secondary" href="{{ request.url_for('admin:view-users-hub') }}"><i class="fa-solid fa-arrow-left me-1"></i>返回用户</a>
+    <a class="btn btn-outline-primary" href="{{ request.url_for('admin:edit', identity='user', pk=detail.user.id) }}">编辑备注</a>
     {% if detail.user.quota_id %}<a class="btn btn-primary" href="{{ request.url_for('admin:edit', identity='user-quota', pk=detail.user.quota_id) }}">编辑配额</a>{% else %}<a class="btn btn-primary" href="{{ request.url_for('admin:create', identity='user-quota') }}">创建配额</a>{% endif %}
   </div>
 </section>
 
 <section class="md-detail-grid">
-  <div class="md-card"><div class="md-panel-head"><h2>账号信息</h2>{% if detail.user.status == 'active' %}<span class="md-badge good">正常</span>{% else %}<span class="md-badge danger">已停用</span>{% endif %}</div><div class="md-panel-body"><dl class="md-detail-list"><div><dt>完整 OpenID</dt><dd>{{ detail.user.wechat_openid }}</dd></div><div><dt>用户 ID</dt><dd>#{{ detail.user.id }}</dd></div><div><dt>最近登录</dt><dd>{{ detail.user.last_login_at[:16]|replace('T',' ') if detail.user.last_login_at else '尚未登录' }}</dd></div><div><dt>邀请绑定</dt><dd>{{ detail.user.invite_redeemed_at[:16]|replace('T',' ') if detail.user.invite_redeemed_at else '未绑定' }}</dd></div></dl></div></div>
-  <div class="md-card"><div class="md-panel-head"><h2>服务与今日配额</h2><span class="md-muted">修改后立即生效</span></div><div class="md-panel-body"><div class="md-kpi-row">
+  <div class="md-card"><div class="md-panel-head"><h2>账号信息</h2>{% if detail.user.status == 'active' %}<span class="md-badge good">正常</span>{% else %}<span class="md-badge danger">已停用</span>{% endif %}</div><div class="md-panel-body"><dl class="md-detail-list"><div><dt>后台备注</dt><dd>{{ detail.user.admin_remark or '未备注' }}</dd></div><div><dt>完整 OpenID</dt><dd>{{ detail.user.wechat_openid }}</dd></div><div><dt>用户 ID</dt><dd>#{{ detail.user.id }}</dd></div><div><dt>最近登录</dt><dd>{{ detail.user.last_login_at[:16]|replace('T',' ') if detail.user.last_login_at else '尚未登录' }}</dd></div></dl></div></div>
+  <div class="md-card"><div class="md-panel-head"><h2>服务与总配额</h2><span class="md-muted">修改后立即生效</span></div><div class="md-panel-body"><div class="md-kpi-row">
     <div class="md-kpi"><label>ASR</label><strong class="{% if not detail.user.asr_enabled %}md-danger{% endif %}">{{ '已开启' if detail.user.asr_enabled else '已关闭' }}</strong><span class="md-muted">{% if detail.today %}{{ "%.1f"|format(detail.today.asr_used) }} / {{ "%.0f"|format(detail.user.asr_limit) if detail.user.asr_limit else '不限' }} 秒{% endif %}</span></div>
     <div class="md-kpi"><label>AI</label><strong class="{% if not detail.user.ai_enabled %}md-danger{% endif %}">{{ '已开启' if detail.user.ai_enabled else '已关闭' }}</strong><span class="md-muted">{% if detail.today %}{{ "{:,}".format(detail.today.ai_used) }} / {{ "{:,}".format(detail.user.ai_limit) if detail.user.ai_limit else '不限' }} Token{% endif %}</span></div>
     <div class="md-kpi"><label>未完成待办</label><strong>{{ detail.today.todo_pending if detail.today else 0 }}</strong><span class="md-muted">共 {{ detail.today.todo_total if detail.today else 0 }} 条</span></div>

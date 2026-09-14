@@ -1,7 +1,8 @@
 """ModelView definitions for the Mustdo admin console.
 
 Enforces the permission grid:
-- users / admins / asr_usage / ai_usage -> read-only
+- users                                -> admin remark only
+- admins / asr_usage / ai_usage        -> read-only
 - user_quotas                         -> can edit (and create a row),
                                           i.e. the only writable management table.
 
@@ -16,15 +17,13 @@ from typing import ClassVar
 
 from sqladmin import ModelView
 from sqladmin.filters import AllUniqueStringValuesFilter, StaticValuesFilter
-from wtforms import SelectField
-from wtforms.validators import NumberRange
+from wtforms.validators import Length, NumberRange
 
 from app.admin.models import (
     Admin,
     AdminAuditLog,
     AiUsage,
     AsrUsage,
-    InviteCode,
     Todo,
     TodoReminder,
     User,
@@ -33,7 +32,7 @@ from app.admin.models import (
 
 
 class UserView(ModelView, model=User):
-    """WeChat-user identity data: read-only."""
+    """WeChat-user identity data; only the private admin remark is editable."""
 
     name = "用户"
     name_plural = "用户"
@@ -42,33 +41,39 @@ class UserView(ModelView, model=User):
 
     column_list: ClassVar[list[str]] = [
         "id",
+        "admin_remark",
         "wechat_openid",
         "status",
-        "invite_redeemed_at",
         "created_at",
         "updated_at",
     ]
     column_labels: ClassVar[dict[str, str]] = {
         "id": "ID",
+        "admin_remark": "后台备注",
         "wechat_openid": "微信 OpenID",
         "status": "状态",
-        "invite_redeemed_at": "绑定邀请时间",
         "created_at": "创建时间",
         "updated_at": "更新时间",
     }
-    column_searchable_list: ClassVar[list[str]] = ["wechat_openid"]
+    column_searchable_list: ClassVar[list[str]] = ["admin_remark", "wechat_openid"]
     column_sortable_list: ClassVar[list[str]] = ["id", "created_at", "status"]
     column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
     page_size = 25
     page_size_options: ClassVar[list[int]] = [25, 50, 100]
 
     can_create = False
-    can_edit = False
+    form_columns: ClassVar[list[str]] = ["admin_remark"]
+    form_labels: ClassVar[dict[str, str]] = {"admin_remark": "后台备注"}
+    form_args: ClassVar[dict[str, dict]] = {
+        "admin_remark": {"validators": [Length(max=40, message="备注最多 40 个字符")]}
+    }
+
+    can_edit = True
     can_delete = False
 
 
 class UserQuotaView(ModelView, model=UserQuota):
-    """Per-user ASR/AI switches and daily limits: the pool admin edits."""
+    """Per-user ASR/AI switches and total limits: the pool admin edits."""
 
     name = "服务配额"
     name_plural = "服务配额"
@@ -79,50 +84,50 @@ class UserQuotaView(ModelView, model=UserQuota):
         "id",
         "user_id",
         "asr_enabled",
-        "asr_daily_seconds",
+        "asr_total_seconds",
         "ai_enabled",
-        "ai_daily_tokens",
+        "ai_total_tokens",
         "updated_at",
     ]
     column_labels: ClassVar[dict[str, str]] = {
         "id": "ID",
         "user_id": "用户ID",
         "asr_enabled": "ASR 开关",
-        "asr_daily_seconds": "ASR 每日时长(秒)",
+        "asr_total_seconds": "ASR 总额度(秒)",
         "ai_enabled": "AI 开关",
-        "ai_daily_tokens": "AI 每日Token限额",
+        "ai_total_tokens": "AI 总Token额度",
         "updated_at": "更新时间",
     }
     column_searchable_list: ClassVar[list[str]] = ["user_id"]
     column_sortable_list: ClassVar[list[str]] = [
         "id",
         "user_id",
-        "asr_daily_seconds",
-        "ai_daily_tokens",
+        "asr_total_seconds",
+        "ai_total_tokens",
         "updated_at",
     ]
 
     form_columns: ClassVar[list[str]] = [
         "user",
         "asr_enabled",
-        "asr_daily_seconds",
+        "asr_total_seconds",
         "ai_enabled",
-        "ai_daily_tokens",
+        "ai_total_tokens",
     ]
     form_labels: ClassVar[dict[str, str]] = {
         "user": "用户",
         "user_id": "用户ID",
         "asr_enabled": "ASR 开关",
-        "asr_daily_seconds": "ASR 每日时长(秒)",
+        "asr_total_seconds": "ASR 总额度(秒)",
         "ai_enabled": "AI 开关",
-        "ai_daily_tokens": "AI 每日Token限额",
+        "ai_total_tokens": "AI 总Token额度",
     }
-    # 0 表示不限；负数无意义（会被解释为“不限额”）——表单层直接拒绝。
+    # 0 表示不限；负数无意义，表单层直接拒绝。
     form_args: ClassVar[dict[str, dict]] = {
-        "asr_daily_seconds": {
-            "validators": [NumberRange(min=0, max=24 * 3600, message="ASR 每日时长不能为负")]
+        "asr_total_seconds": {
+            "validators": [NumberRange(min=0, message="ASR 总额度不能为负")]
         },
-        "ai_daily_tokens": {"validators": [NumberRange(min=0, message="AI 每日Token限额不能为负")]},
+        "ai_total_tokens": {"validators": [NumberRange(min=0, message="AI 总Token额度不能为负")]},
     }
     can_create = True
     can_edit = True
@@ -273,70 +278,6 @@ class AdminView(ModelView, model=Admin):
     page_size_options: ClassVar[list[int]] = [25, 50, 100]
     column_formatters: ClassVar[dict[str, object]] = {
         "status": lambda obj, _: {"active": "正常", "disabled": "已停用"}.get(
-            obj.status, obj.status
-        ),
-    }
-
-
-class InviteCodeView(ModelView, model=InviteCode):
-    """Invite codes: list + edit status/label only.
-
-    The plaintext code is never stored (only its HMAC hash), so the code column
-    is intentionally omitted from every view. Creation is handled by
-    ``InviteCreateView`` which shows the plaintext exactly once.
-    """
-
-    name = "邀请码"
-    name_plural = "邀请码"
-    icon = "fa-ticket"
-    category = "邀请码"
-    list_template = "admin/invite_list.html"
-
-    column_list: ClassVar[list[str]] = [
-        "id",
-        "type",
-        "status",
-        "label",
-        "created_at",
-        "used_at",
-        "user",
-    ]
-    column_labels: ClassVar[dict[str, str]] = {
-        "id": "ID",
-        "type": "类型",
-        "status": "状态",
-        "label": "标签",
-        "created_at": "创建时间",
-        "used_at": "使用时间",
-        "user": "使用人",
-    }
-    column_searchable_list: ClassVar[list[str]] = ["label", "type", "status"]
-    column_sortable_list: ClassVar[list[str]] = ["id", "type", "status", "created_at", "used_at"]
-    column_default_sort: ClassVar[list[tuple[str, bool]]] = [("id", False)]
-
-    # Only status (revoke/re-enable) and label are admin-editable; the code hash
-    # and the type are immutable once created.
-    form_columns: ClassVar[list[str]] = ["status", "label"]
-    form_labels: ClassVar[dict[str, str]] = {"status": "状态", "label": "标签"}
-    form_overrides: ClassVar[dict[str, object]] = {"status": SelectField}
-    form_args: ClassVar[dict[str, dict]] = {
-        "status": {
-            "choices": [
-                ("active", "有效"),
-                ("revoked", "已禁用"),
-                ("redeemed", "已用"),
-            ]
-        },
-    }
-
-    can_create = False
-    can_edit = True
-    can_delete = False
-    page_size = 25
-    page_size_options: ClassVar[list[int]] = [25, 50, 100]
-    column_formatters: ClassVar[dict[str, object]] = {
-        "type": lambda obj, _: {"single": "单次", "multi": "长期"}.get(obj.type, obj.type),
-        "status": lambda obj, _: {"active": "有效", "revoked": "已禁用", "redeemed": "已使用"}.get(
             obj.status, obj.status
         ),
     }

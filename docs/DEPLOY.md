@@ -73,9 +73,8 @@ curl -sS -o /dev/null -w "volc: %{http_code}\n" https://openspeech.bytedance.com
 
 ```bash
 # 有旧库 → 直接放到 $BACKEND/mustdo.db
-# 无旧库 → 初始化 + 生成邀请码：
+# 无旧库 → 初始化：
 cd $BACKEND && uv run python scripts/init_db.py
-uv run python scripts/create_invite.py
 ```
 
 ### 6. 启动服务

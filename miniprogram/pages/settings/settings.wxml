@@ -25,5 +25,35 @@
         <image class="mode-check {{addMode === 'confirm' ? 'mode-check--visible' : ''}}" src="/assets/icons/png/check.png" mode="aspectFit" />
       </button>
     </view>
+
+    <view class="quota-heading">
+      <text class="quota-title">使用额度</text>
+      <text class="quota-subtitle">总额度用完后，可联系管理员调整</text>
+    </view>
+
+    <view wx:if="{{quotaLoading}}" class="quota-state">正在加载额度…</view>
+
+    <view wx:elif="{{quotaError}}" class="quota-state quota-state--error">
+      <text class="quota-error-text">{{quotaError}}</text>
+      <button class="quota-retry" bindtap="retryQuota">重试</button>
+    </view>
+
+    <view wx:elif="{{quotaView}}" class="quota-list">
+      <view class="quota-card {{quotaView.asr.enabled ? '' : 'quota-card--disabled'}}">
+        <view class="quota-card-header">
+          <text class="quota-card-title">语音识别</text>
+          <text class="quota-remaining">{{quotaView.asr.remaining}}</text>
+        </view>
+        <text class="quota-usage">{{quotaView.asr.usage}}</text>
+      </view>
+
+      <view class="quota-card {{quotaView.ai.enabled ? '' : 'quota-card--disabled'}}">
+        <view class="quota-card-header">
+          <text class="quota-card-title">AI 处理</text>
+          <text class="quota-remaining">{{quotaView.ai.remaining}}</text>
+        </view>
+        <text class="quota-usage">{{quotaView.ai.usage}}</text>
+      </view>
+    </view>
   </view>
 </view>
