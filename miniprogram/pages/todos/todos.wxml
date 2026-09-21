@@ -121,7 +121,11 @@
 
     <!-- Empty state -->
     <view wx:elif="{{items.length === 0}}" class="empty-state-minimal">
-      <view class="empty-line"></view>
+      <block wx:if="{{activeView === 'today' && !selectedDate}}">
+        <text class="empty-title">还没有待办</text>
+        <text class="empty-copy">按住下方按钮，说出第一件要做的事</text>
+      </block>
+      <view wx:else class="empty-line"></view>
     </view>
 
     <!-- Todo items (cards + AI group headers) -->
@@ -162,7 +166,7 @@
             </button>
           </view>
           <view
-            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}}"
+            class="todo-item {{item.status === 'done' ? 'done' : ''}} {{item.pinned ? 'pinned' : ''}} {{item.persistent ? 'persistent' : ''}}"
             style="transform: translateX({{item.swipeX || 0}}px);"
             data-index="{{index}}"
             bindtouchstart="onItemTouchStart"
@@ -185,7 +189,7 @@
               <text class="todo-meta">{{item.meta}}</text>
             </view>
             <button
-              wx:if="{{item.status === 'pending'}}"
+              wx:if="{{item.status === 'pending' && !item.persistent}}"
               class="remind-btn {{item.reminder ? 'remind-btn--on' : ''}}"
               data-id="{{item.id}}"
               bindtap="openReminderPanel"
@@ -215,6 +219,8 @@
     bind:saved="onPanelSaved"
     bind:rerecord="onPanelRerecord"
   />
+
+  <quick-guide visible="{{guideVisible}}" bind:close="closeGuide" />
 
   <!-- Microphone permission is actionable, so it uses a real modal instead of a toast. -->
   <view wx:if="{{recordPermissionVisible}}" class="permission-mask" catchtouchmove="noop">
@@ -461,6 +467,20 @@
                 </view>
               </picker>
             </block>
+
+            <view class="sheet-divider"></view>
+
+            <view class="sheet-setting-row" bindtap="onEditPersistentToggle">
+              <view class="setting-leading">
+                <view class="setting-icon-wrap">
+                  <image class="setting-icon" src="/assets/icons/png/checklist.png" mode="aspectFit" />
+                </view>
+                <text class="setting-title">常驻</text>
+              </view>
+              <view class="sheet-switch {{editPersistent ? 'sheet-switch--on' : ''}}">
+                <view class="sheet-switch-thumb"></view>
+              </view>
+            </view>
           </view>
         </view>
 
@@ -529,16 +549,24 @@
         >取消当前提醒</button>
         <button
           wx:if="{{sheetMode === 'edit'}}"
-          class="primary-button save-button"
-          loading="{{editSubmitting}}"
+          class="primary-button save-button {{editSubmitting ? 'primary-button--loading' : ''}}"
+          disabled="{{editSubmitting}}"
           bindtap="submitEdit"
-        >保存修改</button>
+          aria-label="{{editSubmitting ? '正在保存修改' : '保存修改'}}"
+        >
+          <view wx:if="{{editSubmitting}}" class="primary-button-spinner"></view>
+          <text wx:else>保存修改</text>
+        </button>
         <button
           wx:else
-          class="primary-button save-button"
-          loading="{{remindSubmitting}}"
+          class="primary-button save-button {{remindSubmitting ? 'primary-button--loading' : ''}}"
+          disabled="{{remindSubmitting}}"
           bindtap="submitReminder"
-        >确认提醒</button>
+          aria-label="{{remindSubmitting ? '正在确认提醒' : '确认提醒'}}"
+        >
+          <view wx:if="{{remindSubmitting}}" class="primary-button-spinner"></view>
+          <text wx:else>确认提醒</text>
+        </button>
       </view>
     </view>
   </view>

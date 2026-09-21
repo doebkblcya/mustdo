@@ -11,24 +11,26 @@
   <view class="settings-content">
     <view class="settings-heading">
       <text class="settings-title">添加方式</text>
-      <text class="settings-subtitle">语音和文字输入共用此设置</text>
     </view>
 
     <view class="mode-list">
-      <button class="mode-card" data-mode="auto" bindtap="selectAddMode">
-        <text class="mode-title">自动添加</text>
-        <image class="mode-check {{addMode === 'auto' ? 'mode-check--visible' : ''}}" src="/assets/icons/png/check.png" mode="aspectFit" />
-      </button>
+      <view class="mode-panel">
+        <button class="mode-item" data-mode="auto" bindtap="selectAddMode">
+          <text class="mode-title">自动添加</text>
+          <image class="mode-check {{addMode === 'auto' ? 'mode-check--visible' : ''}}" src="/assets/icons/png/check.png" mode="aspectFit" />
+        </button>
 
-      <button class="mode-card" data-mode="confirm" bindtap="selectAddMode">
-        <text class="mode-title">添加前确认</text>
-        <image class="mode-check {{addMode === 'confirm' ? 'mode-check--visible' : ''}}" src="/assets/icons/png/check.png" mode="aspectFit" />
-      </button>
+        <view class="mode-divider"></view>
+
+        <button class="mode-item" data-mode="confirm" bindtap="selectAddMode">
+          <text class="mode-title">添加前确认</text>
+          <image class="mode-check {{addMode === 'confirm' ? 'mode-check--visible' : ''}}" src="/assets/icons/png/check.png" mode="aspectFit" />
+        </button>
+      </view>
     </view>
 
     <view class="quota-heading">
       <text class="quota-title">使用额度</text>
-      <text class="quota-subtitle">总额度用完后，可联系管理员调整</text>
     </view>
 
     <view wx:if="{{quotaLoading}}" class="quota-state">正在加载额度…</view>
@@ -39,33 +41,45 @@
     </view>
 
     <view wx:elif="{{quotaView}}" class="quota-list">
-      <view class="quota-card {{quotaView.asr.enabled ? '' : 'quota-card--disabled'}}">
-        <view class="quota-card-header">
-          <text class="quota-card-title">语音识别</text>
-          <text wx:if="{{quotaView.asr.status}}" class="quota-status">{{quotaView.asr.status}}</text>
+      <view class="quota-panel">
+        <view class="quota-item {{quotaView.asr.enabled ? '' : 'quota-item--disabled'}}">
+          <view class="quota-item-header">
+            <text class="quota-item-title">语音识别</text>
+            <text class="quota-value">{{quotaView.asr.value}}</text>
+          </view>
+          <view wx:if="{{quotaView.asr.showProgress}}" class="quota-progress">
+            <view class="quota-progress-fill" style="width: {{quotaView.asr.usedPercent}}%;" />
+          </view>
         </view>
-        <view class="quota-progress">
-          <view
-            class="quota-progress-fill {{quotaView.asr.unlimited ? 'quota-progress-fill--unlimited' : ''}}"
-            style="width: {{quotaView.asr.remainingPercent}}%;"
-          />
-        </view>
-        <text class="quota-summary">{{quotaView.asr.summary}}</text>
-      </view>
 
-      <view class="quota-card {{quotaView.ai.enabled ? '' : 'quota-card--disabled'}}">
-        <view class="quota-card-header">
-          <text class="quota-card-title">AI 处理</text>
-          <text wx:if="{{quotaView.ai.status}}" class="quota-status">{{quotaView.ai.status}}</text>
+        <view class="quota-divider"></view>
+
+        <view class="quota-item {{quotaView.ai.enabled ? '' : 'quota-item--disabled'}}">
+          <view class="quota-item-header">
+            <text class="quota-item-title">AI 处理</text>
+            <text class="quota-value">{{quotaView.ai.value}}</text>
+          </view>
+          <view wx:if="{{quotaView.ai.showProgress}}" class="quota-progress">
+            <view class="quota-progress-fill" style="width: {{quotaView.ai.usedPercent}}%;" />
+          </view>
         </view>
-        <view class="quota-progress">
-          <view
-            class="quota-progress-fill {{quotaView.ai.unlimited ? 'quota-progress-fill--unlimited' : ''}}"
-            style="width: {{quotaView.ai.remainingPercent}}%;"
-          />
-        </view>
-        <text class="quota-summary">{{quotaView.ai.summary}}</text>
       </view>
     </view>
+
+    <view class="help-heading">
+      <text class="help-title">帮助</text>
+    </view>
+
+    <view class="help-list">
+      <button class="help-item" bindtap="openGuide">
+        <view class="help-leading">
+          <image class="help-icon" src="/assets/icons/png/info.png" mode="aspectFit" />
+          <text class="help-item-title">使用指南</text>
+        </view>
+        <image class="help-chevron" src="/assets/icons/png/chevron_right.png" mode="aspectFit" />
+      </button>
+    </view>
   </view>
+
+  <quick-guide visible="{{guideVisible}}" bind:close="closeGuide" />
 </view>

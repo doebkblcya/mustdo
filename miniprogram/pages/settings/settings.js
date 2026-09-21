@@ -1,25 +1,26 @@
 const preferences = require("../../utils/preferences");
 const api = require("../../utils/api");
 
-function formatDuration(seconds) {
-  const value = Math.max(0, Number(seconds) || 0);
-  if (value < 60) return Math.round(value) + " 秒";
-  const minutes = value / 60;
-  if (minutes < 60) return Math.round(minutes) + " 分钟";
-  const hours = minutes / 60;
-  return (Math.round(hours * 10) / 10) + " 小时";
+function formatDurationPair(usedSeconds, totalSeconds) {
+  const used = Math.max(0, Number(usedSeconds) || 0);
+  const total = Math.max(0, Number(totalSeconds) || 0);
+  if (total < 60) return Math.round(used) + " / " + Math.round(total) + " 秒";
+  if (total < 3600) {
+    return Math.round(used / 60) + " / " + Math.round(total / 60) + " 分钟";
+  }
+  const usedHours = Math.round(used / 360) / 10;
+  const totalHours = Math.round(total / 360) / 10;
+  return usedHours + " / " + totalHours + " 小时";
 }
 
 function formatTokens(tokens) {
   return String(Math.max(0, Math.round(Number(tokens) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-function remainingPercent(remaining, total, unlimited, enabled) {
-  if (!enabled) return 0;
-  if (unlimited) return 100;
+function usedPercent(used, total) {
   const limit = Math.max(0, Number(total) || 0);
   if (!limit) return 0;
-  return Math.max(0, Math.min(100, Math.round((Number(remaining) || 0) / limit * 100)));
+  return Math.max(0, Math.min(100, Math.round((Number(used) || 0) / limit * 100)));
 }
 
 function quotaView(quota) {
@@ -29,34 +30,24 @@ function quotaView(quota) {
     asr: {
       enabled: asr.enabled,
       unlimited: asr.unlimited,
-      status: !asr.enabled
+      value: !asr.enabled
         ? "已停用"
-        : (asr.unlimited ? "无限额度" : ""),
-      summary: !asr.enabled
-        ? "当前不可使用"
-        : (asr.unlimited ? "不设总额度上限" : "总额度 " + formatDuration(asr.total_seconds)),
-      remainingPercent: remainingPercent(
-        asr.remaining_seconds,
-        asr.total_seconds,
-        asr.unlimited,
-        asr.enabled
-      ),
+        : (asr.unlimited
+          ? "无限"
+          : formatDurationPair(asr.used_seconds, asr.total_seconds)),
+      showProgress: asr.enabled && !asr.unlimited,
+      usedPercent: usedPercent(asr.used_seconds, asr.total_seconds),
     },
     ai: {
       enabled: ai.enabled,
       unlimited: ai.unlimited,
-      status: !ai.enabled
+      value: !ai.enabled
         ? "已停用"
-        : (ai.unlimited ? "无限额度" : ""),
-      summary: !ai.enabled
-        ? "当前不可使用"
-        : (ai.unlimited ? "不设总额度上限" : "总额度 " + formatTokens(ai.total_tokens) + " tokens"),
-      remainingPercent: remainingPercent(
-        ai.remaining_tokens,
-        ai.total_tokens,
-        ai.unlimited,
-        ai.enabled
-      ),
+        : (ai.unlimited
+          ? "无限"
+          : formatTokens(ai.used_tokens) + " / " + formatTokens(ai.total_tokens)),
+      showProgress: ai.enabled && !ai.unlimited,
+      usedPercent: usedPercent(ai.used_tokens, ai.total_tokens),
     },
   };
 }
@@ -71,6 +62,7 @@ Page({
     quotaLoading: false,
     quotaError: "",
     quotaView: null,
+    guideVisible: false,
   },
 
   onLoad() {
@@ -115,5 +107,15 @@ Page({
     const mode = event.currentTarget.dataset.mode;
     this.setData({ addMode: preferences.setAddMode(mode) });
     wx.vibrateShort({ type: "light" });
+  },
+
+  openGuide() {
+    this.setData({ guideVisible: true });
+  },
+
+  closeGuide() {
+    const user = api.getStoredUser() || {};
+    preferences.markGuideSeen(user.id);
+    this.setData({ guideVisible: false });
   },
 });

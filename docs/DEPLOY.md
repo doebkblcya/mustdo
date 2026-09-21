@@ -7,6 +7,8 @@
 
 | 项 | 值 |
 |----|----|
+| 当前生产 VPS | 美国 VPS，源站 IP `192.129.143.180`（Cloudflare 代理后无法通过业务域名反查） |
+| SSH 登录 | `doebk@192.129.143.180` |
 | API 域名 | `https://mustdo.doebkblcya.com`（微信小程序 request 合法域名；域名不变则小程序端零改动） |
 | 服务 | FastAPI + uvicorn，`scripts/server.sh` 管理，端口 8000（仅内网） |
 | 反向代理 | nginx + certbot（HTTPS） |

@@ -28,6 +28,29 @@ function daysBetween(aStr, bStr) {
   return Math.round((a - b) / 86400000);
 }
 
+// 有限并发执行，并保留每项成功/失败结果；避免依赖较新的 Promise.allSettled。
+async function mapSettledWithConcurrency(items, limit, task) {
+  var results = new Array(items.length);
+  var nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      var index = nextIndex++;
+      try {
+        results[index] = { status: "fulfilled", value: await task(items[index]) };
+      } catch (error) {
+        results[index] = { status: "rejected", reason: error };
+      }
+    }
+  }
+
+  var workers = [];
+  var workerCount = Math.min(limit, items.length);
+  for (var i = 0; i < workerCount; i += 1) workers.push(runWorker());
+  await Promise.all(workers);
+  return results;
+}
+
 // 弹层进出场过渡时长，需与 trash.wxss 中的 transition 保持一致
 var SHEET_TRANSITION_MS = 240;
 
@@ -47,6 +70,7 @@ Page({
     loading: false,
     error: "",
     todayDate: "",
+    bulkMoving: false,
 
     // 编辑 bottom sheet（结构与视觉来自 app.wxss，进出场用 CSS 过渡）
     editVisible: false,
@@ -189,6 +213,39 @@ Page({
         this._refreshCounts();
       })
       .catch((err) => this._toast(err.message || "操作失败"));
+  },
+
+  // ---- 已逾期：全部移到今天 ----
+  async onMoveAllToday() {
+    var items = this.data.items.slice();
+    if (this.data.bulkMoving || items.length === 0) return;
+    var today = todayStr();
+    this.setData({ bulkMoving: true, todayDate: today });
+    try {
+      var results = await mapSettledWithConcurrency(items, 4, function(item) {
+        return api.updateTodo(item.id, { due_date: today });
+      });
+      var failed = results.filter(function(result) { return result.status === "rejected"; });
+      var succeededCount = results.length - failed.length;
+      this.setData({ bulkMoving: false });
+
+      if (this.data.activeTab === "overdue") {
+        await this.loadList("overdue");
+      } else {
+        this._refreshCounts();
+      }
+
+      if (failed.length === 0) {
+        this._toast("已全部移到今天");
+      } else if (succeededCount === 0) {
+        this._toast((failed[0].reason && failed[0].reason.message) || "操作失败");
+      } else {
+        this._toast("已移动" + succeededCount + "项，" + failed.length + "项失败");
+      }
+    } catch (error) {
+      this.setData({ bulkMoving: false });
+      this._toast(error.message || "操作失败");
+    }
   },
 
   // ---- 已逾期：完成 ----

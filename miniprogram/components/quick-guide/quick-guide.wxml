@@ -1,0 +1,54 @@
+<view wx:if="{{visible}}" class="guide-mask" bindtap="close" catchtouchmove="noop">
+  <view class="guide-sheet" catchtap="noop">
+    <view class="guide-head">
+      <text class="guide-title">快速上手</text>
+      <button class="guide-close" bindtap="close" aria-label="关闭使用指南">
+        <image class="guide-close-icon" src="/assets/icons/png/close.png" mode="aspectFit" />
+      </button>
+    </view>
+
+    <view class="guide-list">
+      <view class="guide-row">
+        <view class="guide-icon-shell">
+          <image class="guide-icon" src="/assets/icons/png/mic.png" mode="aspectFit" />
+        </view>
+        <view class="guide-copy">
+          <text class="guide-row-title">快速记录</text>
+          <text class="guide-row-description">按住说话或切换键盘，一句话可以添加多件事</text>
+        </view>
+      </view>
+
+      <view class="guide-row">
+        <view class="guide-icon-shell">
+          <image class="guide-icon" src="/assets/icons/png/auto_awesome.png" mode="aspectFit" />
+        </view>
+        <view class="guide-copy">
+          <text class="guide-row-title">自动安排</text>
+          <text class="guide-row-description">日期和时间直接说，AI 会自动拆分并安排</text>
+        </view>
+      </view>
+
+      <view class="guide-row">
+        <view class="guide-icon-shell">
+          <image class="guide-icon" src="/assets/icons/png/notifications.png" mode="aspectFit" />
+        </view>
+        <view class="guide-copy">
+          <text class="guide-row-title">微信提醒</text>
+          <text class="guide-row-description">待办有具体时间时，点击铃铛设置提醒</text>
+        </view>
+      </view>
+
+      <view class="guide-row">
+        <view class="guide-icon-shell">
+          <image class="guide-icon" src="/assets/icons/png/checklist.png" mode="aspectFit" />
+        </view>
+        <view class="guide-copy">
+          <text class="guide-row-title">持续推进</text>
+          <text class="guide-row-description">左滑可移到明天、置顶或删除；编辑中可以开启常驻</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="guide-confirm" bindtap="close">开始使用</button>
+  </view>
+</view>

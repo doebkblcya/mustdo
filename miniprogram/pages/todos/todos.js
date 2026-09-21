@@ -1,5 +1,6 @@
 var config = require("../../config");
 var api = require("../../utils/api");
+var preferences = require("../../utils/preferences");
 var spring = api.spring;
 var rubberband = api.rubberband;
 var project = api.project;
@@ -29,6 +30,9 @@ function formatDateCN(dateStr) {
 }
 
 function formatTodoMeta(item, today, tomorrow) {
+  if (item.persistent && item.status === "pending" && item.due_date < today) {
+    return "原定 " + formatDateCN(item.due_date) + (item.due_time ? " " + item.due_time : "");
+  }
   let dateLabel = formatDateCN(item.due_date);
   if (item.due_date === today) dateLabel = "今天";
   if (item.due_date === tomorrow) dateLabel = "明天";
@@ -121,6 +125,7 @@ Page({
     items: [],
     todos: null,
     loading: false,
+    guideVisible: false,
     refreshing: false, // scroll-view refresher 下拉刷新指示
     skeletonItems: [0, 1, 2, 3], // 骨架屏卡片索引数组：onLoad 按视口/上次条数动态生成
     error: "",
@@ -168,8 +173,13 @@ Page({
     editTodoId: null,
     editContent: "",
     editDate: "",
+    editOriginalDate: "",
     editTime: "",
+    editOriginalTime: null,
     editUseTime: false,
+    editPersistent: false,
+    editOriginalPersistent: false,
+    editHasReminder: false,
     editSubmitting: false,
 
     // Reminder sheet
@@ -311,6 +321,7 @@ Page({
         this.applyDateFilter(this.data.selectedDate);
       }
       this._syncUpcomingLabel();
+      this._maybeOpenGuide(todos);
     } catch (error) {
       if (error.statusCode === 401) {
         api.clearSession();
@@ -319,6 +330,31 @@ Page({
       }
       this.setData({ loading: false, error: error.message || "加载失败" });
     }
+  },
+
+  _maybeOpenGuide(todos) {
+    if (this._guideChecked) return;
+    this._guideChecked = true;
+    const user = this.data.user || api.getStoredUser() || {};
+    if (preferences.hasSeenGuide(user.id)) return;
+    const groups = todos && todos.groups ? todos.groups : {};
+    const visibleCount = ["today", "tomorrow", "upcoming"]
+      .reduce((total, key) => total + (groups[key] || []).length, 0);
+    if (visibleCount > 0) return;
+
+    // 再核对回收站/逾期摘要，避免把已有历史数据的老用户误判成新用户。
+    api.listTrash()
+      .then((summary) => {
+        if ((summary.deleted_count || 0) + (summary.overdue_count || 0) > 0) return;
+        this.setData({ guideVisible: true });
+      })
+      .catch(() => {});
+  },
+
+  closeGuide() {
+    const user = this.data.user || api.getStoredUser() || {};
+    preferences.markGuideSeen(user.id);
+    this.setData({ guideVisible: false });
   },
 
   // Render-layer filter: hide completed items without touching todos.groups
@@ -355,11 +391,11 @@ Page({
 
   // ========== AI 动态整理（今天视图） ==========
 
-  // 今天未完成项的指纹：日期 + 每个待办的 id/content/due_time/pinned/status
+  // 今天未完成项的指纹：日期 + 每个待办的 id/content/due_time/pinned/persistent/status
   _organizeFingerprint(pendingItems) {
     const today = this.data.todayDate || "";
     const parts = pendingItems
-      .map((t) => `${t.id}:${t.content}:${t.due_time || ""}:${t.pinned ? 1 : 0}:${t.status}`)
+      .map((t) => `${t.id}:${t.content}:${t.due_time || ""}:${t.pinned ? 1 : 0}:${t.persistent ? 1 : 0}:${t.status}`)
       .join("|");
     const s = today + "|" + parts;
     let h = 5381;
@@ -433,6 +469,8 @@ Page({
       .map((item) => ({
         ...item,
         pinned: Boolean(item.pinned),
+        persistent: Boolean(item.persistent),
+        carried: Boolean(item.persistent && item.status === "pending" && item.due_date < today),
         meta: formatTodoMeta(item, today, tomorrow),
         checkScale: 1,
         deleting: false,
@@ -503,6 +541,8 @@ Page({
       (groups[view] || []).map((item) => ({
         ...item,
         pinned: Boolean(item.pinned),
+        persistent: Boolean(item.persistent),
+        carried: Boolean(item.persistent && item.status === "pending" && item.due_date < (todos && todos.today_date)),
         meta: formatTodoMeta(item, todos && todos.today_date, todos && todos.tomorrow_date),
         checkScale: 1,
         deleting: false,
@@ -742,6 +782,8 @@ Page({
         .map((item) => ({
           ...item,
           pinned: Boolean(item.pinned),
+          persistent: Boolean(item.persistent),
+          carried: Boolean(item.persistent && item.status === "pending" && item.due_date < (todos && todos.today_date)),
           meta: formatTodoMeta(item, todos && todos.today_date, todos && todos.tomorrow_date),
           checkScale: 1,
           deleting: false,
@@ -825,6 +867,9 @@ Page({
     const newStatus = currentStatus === "done" ? "pending" : "done";
     const prev = this.findTodo(id);
     const prevReminder = prev ? prev.reminder : null;
+    const removeCarried = Boolean(
+      prev && prev.persistent && prev.due_date < this.data.todayDate && newStatus === "done"
+    );
     // 完成待办 → 后端联动取消提醒，本地同步清掉
     const clearReminder = newStatus === "done";
 
@@ -848,18 +893,24 @@ Page({
       await api.updateTodo(id, { status: newStatus });
       // AI 视图只看未完成：完成项让勾选动画播完（380ms）后移出视图；
       // 普通视图仅在隐藏已完成模式下移除（勾选动画先播完）
-      if (newStatus === "done" && (this.data.organizeMode || !this.data.showCompleted)) {
+      if (newStatus === "done" && (removeCarried || this.data.organizeMode || !this.data.showCompleted)) {
         setTimeout(() => {
+          if (removeCarried) {
+            this.data.todos = this.removeFromGroups(this.data.todos, id);
+          }
           if (this.data.organizeMode) {
             // Rebuild the organize view (drops done items, empty headers, recomputes 未分组)
             this._renderOrganizeItems();
             return;
           }
           // Skip if the preference was switched back to showing in the meantime
-          if (this.data.showCompleted) return;
+          if (this.data.showCompleted && !removeCarried) return;
           const item = this.data.items.find((i) => i.id === id);
           if (item && item.status === "done") {
-            this.setData({ items: this.data.items.filter((i) => i.id !== id) });
+            this.setData({
+              items: this.data.items.filter((i) => i.id !== id),
+              todos: this.data.todos,
+            });
           }
         }, 380);
       }
@@ -1183,8 +1234,13 @@ Page({
       editTodoId: todo.id,
       editContent: todo.content,
       editDate: todo.due_date,
+      editOriginalDate: todo.due_date,
       editTime: todo.due_time || "09:00",
+      editOriginalTime: todo.due_time || null,
       editUseTime: Boolean(todo.due_time),
+      editPersistent: Boolean(todo.persistent),
+      editOriginalPersistent: Boolean(todo.persistent),
+      editHasReminder: Boolean(todo.reminder),
       editSubmitting: false,
     });
 
@@ -1360,8 +1416,36 @@ Page({
   },
 
   onEditTimeToggle() {
-    this.setData({ editUseTime: !this.data.editUseTime });
+    const nextUseTime = !this.data.editUseTime;
+    this.setData({
+      editUseTime: nextUseTime,
+      editPersistent: nextUseTime ? false : this.data.editPersistent,
+    });
     wx.vibrateShort({ type: "light" });
+  },
+
+  onEditPersistentToggle() {
+    wx.vibrateShort({ type: "light" });
+    if (this.data.editPersistent) {
+      this.setData({ editPersistent: false });
+      return;
+    }
+
+    const enablePersistent = () => {
+      this.setData({ editPersistent: true, editUseTime: false });
+    };
+    if (!this.data.editHasReminder) {
+      enablePersistent();
+      return;
+    }
+
+    wx.showModal({
+      title: "开启常驻",
+      content: "开启后将取消当前提醒",
+      success(res) {
+        if (res.confirm) enablePersistent();
+      },
+    });
   },
 
   async submitEdit() {
@@ -1373,11 +1457,19 @@ Page({
     }
     this.setData({ editSubmitting: true });
     try {
-      const patch = {
-        content,
-        due_date: this.data.editDate,
-        due_time: this.data.editUseTime ? this.data.editTime : null,
-      };
+      const patch = { content };
+      const dueTime = this.data.editUseTime ? this.data.editTime : null;
+      if (dueTime !== this.data.editOriginalTime) {
+        patch.due_time = dueTime;
+      }
+      if (this.data.editPersistent !== this.data.editOriginalPersistent) {
+        patch.persistent = this.data.editPersistent;
+      }
+      // 常驻任务可以带着原始的过期日期出现在今天。日期未被用户修改时
+      // 不提交 due_date，避免后端的“过去日期归正为今天”规则改写原始日期。
+      if (this.data.editDate !== this.data.editOriginalDate) {
+        patch.due_date = this.data.editDate;
+      }
       await api.updateTodo(this.data.editTodoId, patch);
 
       this.setData({ editSubmitting: false });

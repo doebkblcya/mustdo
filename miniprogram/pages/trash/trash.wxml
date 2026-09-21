@@ -23,6 +23,17 @@
   </view>
 
   <view class="trash-content">
+    <button
+      wx:if="{{activeTab === 'overdue' && overdueCount > 0 && !loading && !error}}"
+      class="primary-button bulk-move-button {{bulkMoving ? 'primary-button--loading' : ''}}"
+      disabled="{{bulkMoving}}"
+      bindtap="onMoveAllToday"
+      aria-label="{{bulkMoving ? '正在移到今天' : '全部移到今天'}}"
+    >
+      <view wx:if="{{bulkMoving}}" class="primary-button-spinner"></view>
+      <text wx:else>全部移到今天</text>
+    </button>
+
     <view wx:if="{{loading}}" class="trash-skeleton-list" aria-label="正在加载">
       <view wx:for="{{[0, 1, 2]}}" wx:key="*this" class="trash-skeleton-card">
         <view class="trash-skeleton-copy">
@@ -43,7 +54,6 @@
 
     <view wx:elif="{{items.length === 0}}" class="empty-state">
       <view class="empty-line"></view>
-      <text class="empty-desc">{{activeTab === 'deleted' ? '暂无已删除事项' : '暂无逾期待办'}}</text>
     </view>
 
     <view wx:else class="todo-list todo-list--{{activeTab}}">
@@ -156,7 +166,15 @@
       </scroll-view>
 
       <view class="sheet-footer">
-        <button class="primary-button save-button" loading="{{editSubmitting}}" bindtap="submitEdit">保存修改</button>
+        <button
+          class="primary-button save-button {{editSubmitting ? 'primary-button--loading' : ''}}"
+          disabled="{{editSubmitting}}"
+          bindtap="submitEdit"
+          aria-label="{{editSubmitting ? '正在保存修改' : '保存修改'}}"
+        >
+          <view wx:if="{{editSubmitting}}" class="primary-button-spinner"></view>
+          <text wx:else>保存修改</text>
+        </button>
       </view>
     </view>
   </view>

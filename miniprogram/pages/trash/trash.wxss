@@ -124,6 +124,17 @@ page {
   padding: 32rpx 40rpx calc(48rpx + env(safe-area-inset-bottom));
 }
 
+.bulk-move-button {
+  height: 80rpx;
+  margin: 0 0 32rpx;
+  border-radius: 9999rpx;
+  font-size: 28rpx;
+}
+
+.bulk-move-button::after {
+  display: none;
+}
+
 .todo-list {
   display: flex;
   flex-direction: column;

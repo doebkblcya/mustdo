@@ -397,10 +397,21 @@ page {
   will-change: transform;
 }
 
+/* Persistent: same whole-card language as pinned, with a muted blue outline. */
+.todo-item.persistent {
+  border: 4rpx solid #71808f;
+  background: #ffffff;
+}
+
 /* Pinned: bold black capsule border, plain white surface */
 .todo-item.pinned {
   border: 4rpx solid #1d1d1f;
   background: #ffffff;
+}
+
+/* Both states: pin keeps the stronger outline; the cool tint still signals persistence. */
+.todo-item.pinned.persistent {
+  background: #f2f5f7;
 }
 
 .todo-item.done .todo-title {
@@ -603,6 +614,23 @@ page {
   min-height: 60vh;
   padding-bottom: 128rpx;
   box-sizing: border-box;
+  flex-direction: column;
+  text-align: center;
+}
+
+.empty-title {
+  color: #1a1c1c;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 46rpx;
+}
+
+.empty-copy {
+  max-width: 520rpx;
+  margin-top: 12rpx;
+  color: #8e8e93;
+  font-size: 26rpx;
+  line-height: 38rpx;
 }
 
 .empty-line {

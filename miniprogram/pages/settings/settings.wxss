@@ -69,11 +69,15 @@ page {
 }
 
 .settings-title,
-.settings-subtitle {
+.quota-title,
+.help-title,
+.mode-title {
   display: block;
 }
 
-.settings-title {
+.settings-title,
+.quota-title,
+.help-title {
   color: #000000;
   font-size: 68rpx;
   font-weight: 700;
@@ -81,62 +85,74 @@ page {
   letter-spacing: -0.02em;
 }
 
-.settings-subtitle {
-  color: #5d5e63;
-  font-size: 30rpx;
-  line-height: 40rpx;
-}
-
 .mode-list {
-  display: flex;
-  flex-direction: column;
-  gap: 32rpx;
-  margin-top: 48rpx;
+  margin-top: 32rpx;
 }
 
-.mode-card {
+.mode-panel,
+.quota-panel,
+.quota-state {
+  width: 100%;
+  border-radius: 36rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.02);
+  box-sizing: border-box;
+}
+
+.mode-panel,
+.quota-panel {
+  overflow: hidden;
+}
+
+.mode-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 132rpx;
+  min-height: 108rpx;
   margin: 0;
-  padding: 32rpx 48rpx;
-  border-radius: 48rpx;
-  background: #ffffff;
+  padding: 32rpx 40rpx;
+  border-radius: 0;
+  background: transparent;
   color: #000000;
   text-align: left;
-  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.02);
   box-sizing: border-box;
   transition: transform 80ms ease-out, opacity 80ms ease-out;
 }
 
-.mode-card::after {
+.mode-item::after {
   display: none;
 }
 
-.mode-card:active {
-  transform: scale(0.96);
-  opacity: 0.82;
+.mode-item:active {
+  transform: scale(0.985);
+  opacity: 0.7;
 }
 
 .mode-title {
-  color: #000000;
-  font-size: 34rpx;
-  font-weight: 400;
+  color: #1a1c1c;
+  font-size: 32rpx;
+  font-weight: 600;
   line-height: 44rpx;
 }
 
 .mode-check {
   flex: 0 0 auto;
-  width: 48rpx;
-  height: 48rpx;
+  width: 40rpx;
+  height: 40rpx;
   margin-left: 24rpx;
   opacity: 0;
 }
 
 .mode-check--visible {
   opacity: 1;
+}
+
+.mode-divider,
+.quota-divider {
+  height: 1rpx;
+  margin: 0 40rpx;
+  background: #ededed;
 }
 
 .quota-heading {
@@ -146,65 +162,101 @@ page {
   margin-top: 80rpx;
 }
 
-.quota-title,
-.quota-subtitle,
-.quota-card-title,
-.quota-status,
-.quota-summary,
-.quota-error-text {
-  display: block;
+.help-heading {
+  margin-top: 80rpx;
 }
 
-.quota-title {
-  color: #000000;
-  font-size: 68rpx;
-  font-weight: 700;
-  line-height: 82rpx;
-  letter-spacing: -0.02em;
-}
-
-.quota-subtitle {
-  color: #5d5e63;
-  font-size: 30rpx;
-  line-height: 40rpx;
-}
-
-.quota-list {
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
+.help-list {
   margin-top: 32rpx;
-}
-
-.quota-card,
-.quota-state {
-  width: 100%;
-  padding: 36rpx 40rpx;
+  overflow: hidden;
   border-radius: 36rpx;
   background: #ffffff;
   box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.02);
+}
+
+.help-item,
+.help-leading {
+  display: flex;
+  align-items: center;
+}
+
+.help-item {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 108rpx;
+  margin: 0;
+  padding: 28rpx 32rpx;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
   box-sizing: border-box;
 }
 
-.quota-card--disabled {
-  opacity: 0.56;
+.help-item::after {
+  display: none;
 }
 
-.quota-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24rpx;
+.help-item:active {
+  opacity: 0.7;
 }
 
-.quota-card-title {
+.help-leading {
+  min-width: 0;
+  gap: 20rpx;
+}
+
+.help-icon {
+  width: 40rpx;
+  height: 40rpx;
+  opacity: 0.72;
+}
+
+.help-item-title {
   color: #1a1c1c;
   font-size: 32rpx;
   font-weight: 600;
   line-height: 44rpx;
 }
 
-.quota-status {
+.help-chevron {
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.42;
+}
+
+.quota-item-title,
+.quota-value,
+.quota-error-text {
+  display: block;
+}
+
+.quota-list {
+  margin-top: 32rpx;
+}
+
+.quota-item {
+  padding: 32rpx 40rpx;
+}
+
+.quota-item--disabled {
+  opacity: 0.56;
+}
+
+.quota-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.quota-item-title {
+  color: #1a1c1c;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 44rpx;
+}
+
+.quota-value {
   flex: 0 0 auto;
   color: #5d5e63;
   font-size: 26rpx;
@@ -213,8 +265,8 @@ page {
 
 .quota-progress {
   width: 100%;
-  height: 14rpx;
-  margin-top: 28rpx;
+  height: 10rpx;
+  margin-top: 20rpx;
   overflow: hidden;
   border-radius: 999rpx;
   background: #ededed;
@@ -228,19 +280,9 @@ page {
   transition: width 240ms ease-out;
 }
 
-.quota-progress-fill--unlimited {
-  background: #5d5e63;
-}
-
-.quota-summary {
-  margin-top: 16rpx;
-  color: #707175;
-  font-size: 26rpx;
-  line-height: 40rpx;
-}
-
 .quota-state {
   margin-top: 32rpx;
+  padding: 36rpx 40rpx;
   color: #77787c;
   font-size: 28rpx;
   line-height: 40rpx;

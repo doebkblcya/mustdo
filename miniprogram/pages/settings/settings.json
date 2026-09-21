@@ -1,3 +1,6 @@
 {
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "quick-guide": "/components/quick-guide/quick-guide"
+  }
 }
