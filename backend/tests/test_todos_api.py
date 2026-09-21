@@ -22,13 +22,16 @@ from app.routers.todos import (  # noqa: E402
     batch_create_todos,
     delete_todo,
     organize_todos,
+    patch_todo,
     parse_todos,
 )
 from app.schemas import (  # noqa: E402
     BatchCreateRequest,
     OrganizeRequest,
     TodoParseRequest,
+    TodoUpdateRequest,
 )
+from app.services.todos import list_grouped_todos  # noqa: E402
 from app.time_utils import now_shanghai, today_date  # noqa: E402
 
 
@@ -206,6 +209,54 @@ class TodoApiTests(unittest.TestCase):
         self.assertEqual(result.items[0].due_date, today_date())
         self.assertIsNone(result.items[0].due_time)
         self.assertEqual(result.items[1].due_time, "09:30")
+
+    def test_persistent_overdue_todo_is_carried_into_today_until_done(self) -> None:
+        user_id, todo_id = self._create_todo()
+        past = (today_date() - timedelta(days=3)).isoformat()
+        db = get_connection()
+        try:
+            db.execute(
+                "UPDATE todos SET due_date = ?, persistent = 1 WHERE id = ?",
+                (past, todo_id),
+            )
+            db.commit()
+
+            listed = list_grouped_todos(db, user_id)
+            self.assertEqual([item.id for item in listed.groups.today], [todo_id])
+            self.assertEqual(str(listed.groups.today[0].due_date), past)
+            self.assertTrue(listed.groups.today[0].persistent)
+
+            patched = patch_todo(
+                todo_id,
+                TodoUpdateRequest(status="done"),
+                db=db,
+                user={"id": user_id},
+            )
+            self.assertEqual(patched.status, "done")
+            listed_after = list_grouped_todos(db, user_id)
+            self.assertEqual(listed_after.groups.today, [])
+        finally:
+            db.close()
+
+    def test_patch_persistent_does_not_change_pin_semantics(self) -> None:
+        user_id, todo_id = self._create_todo()
+        db = get_connection()
+        try:
+            patched = patch_todo(
+                todo_id,
+                TodoUpdateRequest(persistent=True),
+                db=db,
+                user={"id": user_id},
+            )
+            row = db.execute(
+                "SELECT pinned, persistent FROM todos WHERE id = ?", (todo_id,)
+            ).fetchone()
+        finally:
+            db.close()
+
+        self.assertTrue(patched.persistent)
+        self.assertEqual(row["pinned"], 0)
+        self.assertEqual(row["persistent"], 1)
 
 
 if __name__ == "__main__":

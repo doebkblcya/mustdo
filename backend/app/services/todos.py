@@ -16,6 +16,7 @@ def row_to_todo(row: sqlite3.Row) -> TodoPublic:
         due_time=row["due_time"],
         status=row["status"],
         pinned=bool(row["pinned"]),
+        persistent=bool(row["persistent"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -50,7 +51,10 @@ def list_grouped_todos(db: sqlite3.Connection, user_id: int) -> TodoListResponse
         LEFT JOIN todo_reminders r ON r.todo_id = t.id
         WHERE t.user_id = ?
           AND t.deleted_at IS NULL
-          AND t.due_date >= ?
+          AND (
+            t.due_date >= ?
+            OR (t.persistent = 1 AND t.status = 'pending')
+          )
         ORDER BY t.due_date ASC, t.id ASC
         """,
         (user_id, today.isoformat()),
@@ -59,7 +63,9 @@ def list_grouped_todos(db: sqlite3.Connection, user_id: int) -> TodoListResponse
     groups = {"today": [], "tomorrow": [], "upcoming": []}
     for row in rows:
         todo = row_to_todo(row)
-        if todo.due_date == today:
+        if todo.due_date == today or (
+            todo.persistent and todo.status == "pending" and todo.due_date < today
+        ):
             groups["today"].append(todo)
         elif todo.due_date == tomorrow:
             groups["tomorrow"].append(todo)
@@ -108,7 +114,15 @@ def update_todo(
     if not values:
         return row_to_todo(row)
 
-    allowed = {"content", "due_date", "due_time", "status", "pinned", "deleted_at"}
+    allowed = {
+        "content",
+        "due_date",
+        "due_time",
+        "status",
+        "pinned",
+        "persistent",
+        "deleted_at",
+    }
     assignments = []
     params = []
     for key, value in values.items():

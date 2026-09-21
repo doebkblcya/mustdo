@@ -34,6 +34,7 @@ def main() -> None:
             DELETE FROM todos
             WHERE deleted_at IS NULL
               AND due_date < ?
+              AND NOT (persistent = 1 AND status = 'pending')
             """,
             (cutoff_date,),
         ).rowcount

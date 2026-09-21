@@ -52,6 +52,8 @@ def init_db() -> None:
                     CHECK (status IN ('pending', 'done')),
                 pinned INTEGER NOT NULL DEFAULT 0
                     CHECK (pinned IN (0, 1)),
+                persistent INTEGER NOT NULL DEFAULT 0
+                    CHECK (persistent IN (0, 1)),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 deleted_at TEXT
@@ -167,6 +169,7 @@ def init_db() -> None:
             """
         )
         _migrate_todos_pinned(conn)
+        _migrate_todos_persistent(conn)
         _migrate_users_wechat(conn)
         _migrate_user_quotas_to_totals(conn)
         _remove_invite_schema(conn)
@@ -302,6 +305,16 @@ def _migrate_todos_pinned(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE todos ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
             " CHECK (pinned IN (0, 1))"
+        )
+
+
+def _migrate_todos_persistent(conn: sqlite3.Connection) -> None:
+    """Migration: add the unfinished-task carry-forward flag."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info('todos')").fetchall()}
+    if "persistent" not in cols:
+        conn.execute(
+            "ALTER TABLE todos ADD COLUMN persistent INTEGER NOT NULL DEFAULT 0"
+            " CHECK (persistent IN (0, 1))"
         )
 
 

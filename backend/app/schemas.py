@@ -67,6 +67,7 @@ class TodoPublic(BaseModel):
     due_time: str | None
     status: Literal["pending", "done"]
     pinned: bool
+    persistent: bool
     created_at: str
     updated_at: str
     reminder: ReminderPublic | None = None
@@ -100,6 +101,7 @@ class TodoUpdateRequest(BaseModel):
     due_time: str | None = None
     status: Literal["pending", "done"] | None = None
     pinned: bool | None = None
+    persistent: bool | None = None
     # 恢复：软删项可用 deleted_at=None 清除删除标记（v2-02 提醒落地前无提醒字段可清）
     # 只允许 null：非 null 值可伪造删除时间、绕过 DELETE 与 7 天清理窗口
     deleted_at: str | None = None

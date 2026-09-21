@@ -136,6 +136,7 @@ class Todo(Base):
     due_time: Mapped[str | None]
     status: Mapped[str]
     pinned: Mapped[int]
+    persistent: Mapped[int]
     created_at: Mapped[str]
     updated_at: Mapped[str]
     deleted_at: Mapped[str | None]

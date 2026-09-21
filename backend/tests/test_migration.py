@@ -128,6 +128,9 @@ class LegacyMigrationTests(unittest.TestCase):
             user_cols = [
                 c[1] for c in conn.execute("PRAGMA table_info('users')").fetchall()
             ]
+            todo_cols = [
+                c[1] for c in conn.execute("PRAGMA table_info('todos')").fetchall()
+            ]
             invite_table = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'invite_codes'"
             ).fetchone()
@@ -151,6 +154,7 @@ class LegacyMigrationTests(unittest.TestCase):
         # no orphaned todos / sessions pointing at a reused id
         self.assertEqual(len(todos), 0)
         self.assertEqual(len(sessions), 0)
+        self.assertIn("persistent", todo_cols)
         self.assertIsNone(invite_table)
 
     def test_current_schema_removes_gate_and_converts_daily_limits_to_totals(self) -> None:

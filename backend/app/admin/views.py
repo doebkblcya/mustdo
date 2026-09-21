@@ -372,6 +372,7 @@ class TodoView(ModelView, model=Todo):
         "due_time",
         "status",
         "pinned",
+        "persistent",
         "deleted_at",
         "created_at",
     ]
@@ -383,6 +384,7 @@ class TodoView(ModelView, model=Todo):
         "due_time": "时间",
         "status": "状态",
         "pinned": "置顶",
+        "persistent": "常驻",
         "deleted_at": "删除时间",
         "created_at": "创建时间",
     }
@@ -393,6 +395,7 @@ class TodoView(ModelView, model=Todo):
             [("pending", "未完成"), ("done", "已完成")],
         ),
         StaticValuesFilter("pinned", [("0", "否"), ("1", "是")]),
+        StaticValuesFilter("persistent", [("0", "否"), ("1", "是")]),
     ]
     column_sortable_list: ClassVar[list[str]] = [
         "id",
@@ -408,6 +411,7 @@ class TodoView(ModelView, model=Todo):
             obj.status, obj.status
         ),
         "pinned": lambda obj, _: "是" if obj.pinned else "否",
+        "persistent": lambda obj, _: "是" if obj.persistent else "否",
         "deleted_at": lambda obj, _: "已删除" if obj.deleted_at else "",
     }
 

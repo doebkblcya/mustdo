@@ -15,6 +15,7 @@ def row_to_trash_item(row: sqlite3.Row) -> TrashItem:
         due_time=row["due_time"],
         status=row["status"],
         pinned=bool(row["pinned"]),
+        persistent=bool(row["persistent"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         deleted_at=row["deleted_at"],
@@ -31,7 +32,7 @@ def _counts(db: sqlite3.Connection, user_id: int) -> tuple[int, int]:
         """
         SELECT COUNT(*) FROM todos
         WHERE user_id = ? AND deleted_at IS NULL
-          AND status = 'pending' AND due_date < ?
+          AND status = 'pending' AND persistent = 0 AND due_date < ?
         """,
         (user_id, today),
     ).fetchone()[0]
@@ -58,7 +59,7 @@ def list_trash(db: sqlite3.Connection, user_id: int, type: str | None) -> TrashL
             """
             SELECT * FROM todos
             WHERE user_id = ? AND deleted_at IS NULL
-              AND status = 'pending' AND due_date < ?
+              AND status = 'pending' AND persistent = 0 AND due_date < ?
             ORDER BY due_date DESC, id DESC
             """,
             (user_id, today),

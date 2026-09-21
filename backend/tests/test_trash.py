@@ -66,6 +66,7 @@ class TrashApiTests(unittest.TestCase):
         due_time: str | None = None,
         status: str = "pending",
         content: str = "事项",
+        persistent: bool = False,
     ) -> int:
         now = now_shanghai()
         db = get_connection()
@@ -73,9 +74,9 @@ class TrashApiTests(unittest.TestCase):
             cur = db.execute(
                 """
                 INSERT INTO todos (
-                    user_id, content, due_date, due_time, status, created_at, updated_at
+                    user_id, content, due_date, due_time, status, persistent, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -83,6 +84,7 @@ class TrashApiTests(unittest.TestCase):
                     due_date or today_date().isoformat(),
                     due_time,
                     status,
+                    1 if persistent else 0,
                     now.isoformat(timespec="seconds"),
                     now.isoformat(timespec="seconds"),
                 ),
@@ -160,6 +162,22 @@ class TrashApiTests(unittest.TestCase):
 
         self.assertEqual(res.overdue_count, 2)
         self.assertEqual([item.id for item in res.items], [t_new, t_old])
+
+    def test_persistent_pending_todo_is_not_overdue(self) -> None:
+        uid = self._create_user()
+        past = (today_date() - timedelta(days=4)).isoformat()
+        persistent = self._create_todo(uid, due_date=past, persistent=True)
+        ordinary = self._create_todo(uid, due_date=past)
+
+        db = get_connection()
+        try:
+            res = get_trash("overdue", db=db, user={"id": uid})
+        finally:
+            db.close()
+
+        self.assertEqual(res.overdue_count, 1)
+        self.assertEqual([item.id for item in res.items], [ordinary])
+        self.assertNotIn(persistent, [item.id for item in res.items])
 
     def test_user_isolation(self) -> None:
         uid_a = self._create_user("openid-a")
@@ -278,6 +296,11 @@ class TrashApiTests(unittest.TestCase):
         self._soft_delete(new_deleted, (now - timedelta(days=6)).isoformat(timespec="seconds"))
         old_overdue = self._create_todo(uid, due_date=(today_date() - timedelta(days=8)).isoformat())
         new_overdue = self._create_todo(uid, due_date=(today_date() - timedelta(days=6)).isoformat())
+        old_persistent = self._create_todo(
+            uid,
+            due_date=(today_date() - timedelta(days=30)).isoformat(),
+            persistent=True,
+        )
 
         cleanup_overdue.main()
 
@@ -291,6 +314,7 @@ class TrashApiTests(unittest.TestCase):
         self.assertIn(new_deleted, ids)
         self.assertNotIn(old_overdue, ids)
         self.assertIn(new_overdue, ids)
+        self.assertIn(old_persistent, ids)
 
 
 if __name__ == "__main__":
