@@ -138,6 +138,20 @@ class ReminderTests(unittest.TestCase):
             db.close()
         self.assertEqual(raised.exception.detail["code"], "reminder_requires_time")
 
+    def test_upsert_rejects_persistent_todo(self) -> None:
+        user_id = self._create_user()
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            db.execute("UPDATE todos SET persistent = 1 WHERE id = ?", (todo_id,))
+            db.commit()
+            with self.assertRaises(HTTPException) as raised:
+                upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
+        finally:
+            db.close()
+        self.assertEqual(raised.exception.detail["code"], "reminder_persistent_todo")
+
     def test_upsert_rejects_past(self) -> None:
         user_id = self._create_user()
         todo_id = self._create_todo(user_id)
@@ -259,6 +273,42 @@ class ReminderTests(unittest.TestCase):
             self.assertEqual(status, "cancelled")
         finally:
             db.close()
+
+    def test_patch_same_due_time_keeps_reminder(self) -> None:
+        user_id = self._create_user()
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
+            updated = update_todo(db, user_id, todo_id, {"due_time": due_time})
+            status_value = db.execute(
+                "SELECT status FROM todo_reminders WHERE todo_id = ?", (todo_id,)
+            ).fetchone()["status"]
+        finally:
+            db.close()
+
+        self.assertIsNotNone(updated.reminder)
+        self.assertEqual(status_value, "pending")
+
+    def test_enabling_persistent_clears_time_and_cancels_reminder(self) -> None:
+        user_id = self._create_user()
+        due_date, due_time = self._future_due()
+        todo_id = self._create_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            upsert_reminder(db, user_id, todo_id, f"{due_date}T14:30:00+08:00")
+            updated = update_todo(db, user_id, todo_id, {"persistent": True})
+            reminder_status = db.execute(
+                "SELECT status FROM todo_reminders WHERE todo_id = ?", (todo_id,)
+            ).fetchone()["status"]
+        finally:
+            db.close()
+
+        self.assertTrue(updated.persistent)
+        self.assertIsNone(updated.due_time)
+        self.assertIsNone(updated.reminder)
+        self.assertEqual(reminder_status, "cancelled")
 
     def test_patch_status_done_cancels_reminder(self) -> None:
         user_id = self._create_user()

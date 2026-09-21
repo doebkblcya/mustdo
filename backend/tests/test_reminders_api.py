@@ -155,6 +155,25 @@ class ReminderApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()["code"], "reminder_requires_time")
 
+    def test_put_rejects_persistent_todo(self) -> None:
+        user_id = self._seed_user_with_session()
+        due_date, due_time = self._future_due()
+        todo_id = self._seed_todo(user_id, due_date=due_date, due_time=due_time)
+        db = get_connection()
+        try:
+            db.execute("UPDATE todos SET persistent = 1 WHERE id = ?", (todo_id,))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = self.client.put(
+            f"/api/todos/{todo_id}/reminder",
+            json={"remind_at": f"{due_date}T14:30:00+08:00"},
+            headers=self._auth(),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["code"], "reminder_persistent_todo")
+
     def test_put_rejects_past(self) -> None:
         user_id = self._seed_user_with_session()
         todo_id = self._seed_todo(user_id)

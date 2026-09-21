@@ -53,8 +53,8 @@ def upsert_reminder(
 ) -> ReminderPublic:
     """Create or replace the todo's reminder.
 
-    Validates ownership, non-deleted state, pending status, an explicit
-    ``due_time`` and a ``remind_at`` inside ``(now, due]`` —— 提醒晚于截止时刻
+    Validates ownership, non-deleted state, pending/non-persistent status, an
+    explicit ``due_time`` and a ``remind_at`` inside ``(now, due]`` —— 提醒晚于截止时刻
     没有意义（那时待办已经过期）。Overwrites any existing row
     (todo_id is UNIQUE), which enforces 「每条待办同时保留一个有效提醒」.
     """
@@ -66,6 +66,8 @@ def upsert_reminder(
         raise_api_error(status.HTTP_404_NOT_FOUND, "todo_not_found", "待办不存在")
     if row["status"] == "done":
         raise_api_error(status.HTTP_400_BAD_REQUEST, "reminder_todo_done", "已完成待办无法设置提醒")
+    if row["persistent"]:
+        raise_api_error(status.HTTP_400_BAD_REQUEST, "reminder_persistent_todo", "常驻待办不能设置提醒")
     if row["due_time"] is None:
         raise_api_error(status.HTTP_400_BAD_REQUEST, "reminder_requires_time", "请先设置明确时间")
     if remind_at <= utcish_now_iso():

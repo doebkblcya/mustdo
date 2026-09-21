@@ -258,6 +258,24 @@ class TodoApiTests(unittest.TestCase):
         self.assertEqual(row["pinned"], 0)
         self.assertEqual(row["persistent"], 1)
 
+    def test_setting_due_time_disables_persistent(self) -> None:
+        user_id, todo_id = self._create_todo()
+        db = get_connection()
+        try:
+            db.execute("UPDATE todos SET persistent = 1 WHERE id = ?", (todo_id,))
+            db.commit()
+            patched = patch_todo(
+                todo_id,
+                TodoUpdateRequest(due_time="09:30"),
+                db=db,
+                user={"id": user_id},
+            )
+        finally:
+            db.close()
+
+        self.assertEqual(patched.due_time, "09:30")
+        self.assertFalse(patched.persistent)
+
 
 if __name__ == "__main__":
     unittest.main()

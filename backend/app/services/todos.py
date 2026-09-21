@@ -114,6 +114,14 @@ def update_todo(
     if not values:
         return row_to_todo(row)
 
+    # 常驻与具体时间/提醒语义互斥。服务端负责最终归一，兼容还未升级的客户端：
+    # 开启常驻时清除具体时间；设置具体时间时自动关闭常驻。
+    values = dict(values)
+    if values.get("persistent") is True:
+        values["due_time"] = None
+    elif values.get("due_time") is not None:
+        values["persistent"] = False
+
     allowed = {
         "content",
         "due_date",
@@ -125,16 +133,20 @@ def update_todo(
     }
     assignments = []
     params = []
+    changed_keys: set[str] = set()
     for key, value in values.items():
         if key not in allowed:
             continue
         assignments.append(f"{key} = ?")
         if isinstance(value, bool):
-            params.append(1 if value else 0)
+            db_value = 1 if value else 0
         elif isinstance(value, date):
-            params.append(value.isoformat())
+            db_value = value.isoformat()
         else:
-            params.append(value)
+            db_value = value
+        params.append(db_value)
+        if row[key] != db_value:
+            changed_keys.add(key)
 
     if not assignments:
         return row_to_todo(row)
@@ -150,8 +162,11 @@ def update_todo(
         """,
         params,
     )
-    # 状态联动：完成 / 改期（日期或具体时间）→ 取消提醒
-    if {"due_date", "due_time", "status"} & values.keys():
+    # 状态联动：真正完成 / 改期 / 开启常驻时才取消提醒。
+    # 仅重复提交未变化的 due_time 不应误取消已有提醒。
+    reminder_changed = bool({"due_date", "due_time", "status"} & changed_keys)
+    persistent_enabled = "persistent" in changed_keys and values.get("persistent") is True
+    if reminder_changed or persistent_enabled:
         cancel_reminder(db, user_id, todo_id)
     db.commit()
     updated = row_to_todo(_get_owned_todo_any(db, user_id, todo_id))
