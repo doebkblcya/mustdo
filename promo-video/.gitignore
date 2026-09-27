@@ -1,0 +1,7 @@
+/node_modules/
+/dist/
+/out/
+/public/audio/music/*.mp3
+/public/audio/sfx/*.wav
+.DS_Store
+.env
